@@ -4,6 +4,7 @@ ExStore is a full-stack web application for sharing photos and videos with famil
 
 ## Features
 
+
 - 📸 Upload and manage photos and videos
 - 👥 Share galleries with family and friends
 - ☁️ Secure storage with Azure Blob Storage
