@@ -25,7 +25,7 @@ public class FilesController : ControllerBase
         try
         {
             var files = new List<FileModel>();
-            var containerName = _configuration["AzureBlobStorage:ContainerName"] ?? "exstore-files";
+            var containerName = _configuration["BlobStorage:ContainerName"] ?? "exstore-files";
             var container = _blobServiceClient.GetBlobContainerClient(containerName);
 
             await foreach (var blob in container.GetBlobsAsync())
@@ -55,7 +55,7 @@ public class FilesController : ControllerBase
 
         try
         {
-            var containerName = _configuration["AzureBlobStorage:ContainerName"] ?? "exstore-files";
+            var containerName = _configuration["BlobStorage:ContainerName"] ?? "exstore-files";
             var container = _blobServiceClient.GetBlobContainerClient(containerName);
 
             // Ensure container exists
@@ -91,7 +91,7 @@ public class FilesController : ControllerBase
     {
         try
         {
-            var containerName = _configuration["AzureBlobStorage:ContainerName"] ?? "exstore-files";
+            var containerName = _configuration["BlobStorage:ContainerName"] ?? "exstore-files";
             var container = _blobServiceClient.GetBlobContainerClient(containerName);
             var blobClient = container.GetBlobClient(id);
 

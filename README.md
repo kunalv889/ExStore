@@ -79,7 +79,7 @@ VITE_API_BASE_URL=http://localhost:49820
 Create `backend/appsettings.Development.json`:
 ```json
 {
-  "AzureBlobStorage": {
+  "BlobStorage": {
     "ConnectionString": "your-connection-string",
     "ContainerName": "exstore-files"
   }

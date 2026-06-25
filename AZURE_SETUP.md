@@ -33,7 +33,7 @@
 3. Copy the entire connection string
 4. Paste in `backend/ExStore.API/appsettings.Development.json`:
    ```json
-   "AzureBlobStorage": {
+   "BlobStorage": {
      "ConnectionString": "YOUR_CONNECTION_STRING_HERE",
      "ContainerName": "exstore-files"
    }

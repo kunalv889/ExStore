@@ -24,7 +24,7 @@ builder.Services.AddCors(options =>
 });
 
 // Add Azure Blob Storage
-var connectionString = builder.Configuration["AzureBlobStorage:ConnectionString"];
+var connectionString = builder.Configuration["BlobStorage:ConnectionString"];
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddSingleton(_ => new BlobServiceClient("UseDevelopmentStorage=true"));
