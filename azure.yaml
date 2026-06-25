@@ -1,0 +1,6 @@
+name: exstore
+services:
+  web:
+    project: backend/ExStore.API
+    language: dotnet
+    host: appservice
