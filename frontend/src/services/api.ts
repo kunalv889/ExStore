@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? window.location.origin : 'https://localhost:49820')).replace(/\/$/, '')
+const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env
+const API_BASE_URL = (viteEnv?.VITE_API_BASE_URL || (viteEnv?.PROD ? window.location.origin : 'https://localhost:49820')).toString().replace(/\/$/, '')
 
 const api = axios.create({
     baseURL: `${API_BASE_URL}/api`,
