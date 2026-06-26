@@ -39,6 +39,8 @@ else
 var app = builder.Build();
 
 // Configure middleware
+app.UseCors("AllowFrontend");
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -46,7 +48,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors("AllowFrontend");
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseAuthorization();
