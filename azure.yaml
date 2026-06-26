@@ -4,3 +4,11 @@ services:
     project: backend/ExStore.API
     language: dotnet
     host: appservice
+    hooks:
+      prepackage:
+        windows:
+          shell: pwsh
+          run: npm --prefix frontend ci; npm --prefix frontend run build
+        posix:
+          shell: sh
+          run: npm --prefix frontend ci && npm --prefix frontend run build

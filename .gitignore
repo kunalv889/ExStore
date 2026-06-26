@@ -14,6 +14,7 @@ obj/
 .vscode/
 appsettings.*.json
 !appsettings.json
+!appsettings.Production.json
 
 # Environment
 .env
