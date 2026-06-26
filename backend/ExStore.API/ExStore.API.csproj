@@ -13,12 +13,12 @@
     <PackageReference Include="Microsoft.Extensions.Azure" Version="1.6.0" />
   </ItemGroup>
 
-  <Target Name="CopyFrontendDist" AfterTargets="Publish" Condition="Exists('$(MSBuildProjectDirectory)\..\frontend\dist')">
+  <Target Name="CopyFrontendDist" AfterTargets="Publish" Condition="Exists('$(MSBuildProjectDirectory)\..\..\frontend\dist')">
     <Message Text="Copying frontend build output to backend wwwroot..." Importance="high" />
     <RemoveDir Directories="$(PublishDir)wwwroot" />
     <MakeDir Directories="$(PublishDir)wwwroot" />
     <ItemGroup>
-      <FrontendDistFiles Include="$(MSBuildProjectDirectory)\..\frontend\dist\**\*" />
+      <FrontendDistFiles Include="$(MSBuildProjectDirectory)\..\..\frontend\dist\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendDistFiles)" DestinationFiles="@(FrontendDistFiles->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
