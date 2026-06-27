@@ -40,7 +40,7 @@ jobs:
           acrName: ${{ secrets.AZURE_REGISTRY_NAME }}
           containerAppName: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          dockerfilePath: backend/Dockerfile
+          dockerfilePath: Dockerfile
           appSourcePath: backend
 
   deploy-frontend:
