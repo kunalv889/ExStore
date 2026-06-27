@@ -41,7 +41,7 @@ jobs:
           containerAppName: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           dockerfilePath: backend/Dockerfile
-          buildContextPath: backend
+          appSourcePath: backend
 
   deploy-frontend:
     name: Deploy Frontend → Static Web Apps
