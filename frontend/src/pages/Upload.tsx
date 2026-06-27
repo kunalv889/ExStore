@@ -41,7 +41,7 @@ export default function Upload() {
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-8">
-            <h1 className="text-4xl font-bold mb-8">Upload Photos & Videos</h1>
+            <h1 className="text-4xl font-bold mb-8">Upload Photos, Videos & ZIPs</h1>
 
             <form onSubmit={handleUpload} className="bg-white rounded-lg shadow-md p-8">
                 <div className="mb-6">
@@ -51,7 +51,7 @@ export default function Upload() {
                     <input
                         type="file"
                         onChange={handleFileChange}
-                        accept="image/*,video/*"
+                        accept="image/*,video/*,.zip,application/zip,application/x-zip-compressed"
                         className="block w-full text-sm text-gray-500
               file:mr-4 file:py-2 file:px-4
               file:rounded-md file:border-0

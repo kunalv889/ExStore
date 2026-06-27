@@ -1,4 +1,5 @@
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using ExStore.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -104,7 +105,11 @@ public class FilesController : ControllerBase
 
             using (var stream = file.OpenReadStream())
             {
-                await blobClient.UploadAsync(stream, overwrite: true);
+                var uploadOptions = new BlobUploadOptions
+                {
+                    HttpHeaders = new BlobHttpHeaders { ContentType = file.ContentType }
+                };
+                await blobClient.UploadAsync(stream, uploadOptions);
             }
 
             var fileModel = new FileModel
