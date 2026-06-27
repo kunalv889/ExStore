@@ -11,7 +11,8 @@ const api = axios.create({
 })
 
 export const fileService = {
-    getFiles: () => api.get('/files'),
+    getFiles: (page = 1, pageSize?: number) =>
+        api.get('/files', { params: { page, ...(pageSize !== undefined && { pageSize }) } }),
     uploadFile: (formData: FormData) => api.post('/files/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),

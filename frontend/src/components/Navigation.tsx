@@ -12,6 +12,9 @@ export default function Navigation() {
                         <Link to="/" className="text-gray-700 hover:text-blue-600 transition">
                             Home
                         </Link>
+                        <Link to="/photos" className="text-gray-700 hover:text-blue-600 transition">
+                            Photos
+                        </Link>
                         <Link to="/upload" className="text-gray-700 hover:text-blue-600 transition">
                             Upload
                         </Link>

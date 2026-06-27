@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Gallery from './pages/Gallery'
 import Upload from './pages/Upload'
+import Photos from './pages/Photos'
 import Navigation from './components/Navigation'
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
                 <Navigation />
                 <Routes>
                     <Route path="/" element={<Home />} />
+                    <Route path="/photos" element={<Photos />} />
                     <Route path="/gallery/:id" element={<Gallery />} />
                     <Route path="/upload" element={<Upload />} />
                 </Routes>

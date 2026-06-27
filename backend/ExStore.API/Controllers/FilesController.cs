@@ -1,4 +1,5 @@
 using Azure.Storage.Blobs;
+using Azure.Storage.Sas;
 using ExStore.API.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,27 +21,60 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<FileModel>>> GetFiles()
+    public async Task<ActionResult<PagedResult<FileModel>>> GetFiles(
+        [FromQuery] int page = 1,
+        [FromQuery] int? pageSize = null)
     {
         try
         {
-            var files = new List<FileModel>();
+            var effectivePageSize = pageSize ?? _configuration.GetValue<int>("Files:PageSize", 10);
+            effectivePageSize = Math.Clamp(effectivePageSize, 1, 100);
+            page = Math.Max(1, page);
+
             var containerName = _configuration["AzureBlobStorage:ContainerName"]
                 ?? _configuration["BlobStorage:ContainerName"]
                 ?? "exstore-files";
             var container = _blobServiceClient.GetBlobContainerClient(containerName);
 
+            var allFiles = new List<FileModel>();
+            var sasExpiryHours = _configuration.GetValue<int>("Files:SasExpiryHours", 1);
+            var sasExpiry = DateTimeOffset.UtcNow.AddHours(sasExpiryHours);
+
             await foreach (var blob in container.GetBlobsAsync())
             {
-                files.Add(new FileModel
+                var blobClient = container.GetBlobClient(blob.Name);
+                var blobUri = blobClient.CanGenerateSasUri
+                    ? blobClient.GenerateSasUri(BlobSasPermissions.Read, sasExpiry).ToString()
+                    : blobClient.Uri.ToString();
+
+                allFiles.Add(new FileModel
                 {
                     FileName = blob.Name,
                     Size = blob.Properties.ContentLength ?? 0,
-                    BlobUri = container.GetBlobClient(blob.Name).Uri.ToString()
+                    ContentType = blob.Properties.ContentType ?? string.Empty,
+                    UploadedAt = blob.Properties.LastModified?.UtcDateTime ?? DateTime.UtcNow,
+                    BlobUri = blobUri
                 });
             }
 
-            return Ok(files);
+            // Sort newest first
+            allFiles = allFiles.OrderByDescending(f => f.UploadedAt).ToList();
+
+            var totalCount = allFiles.Count;
+            var totalPages = (int)Math.Ceiling(totalCount / (double)effectivePageSize);
+            var items = allFiles
+                .Skip((page - 1) * effectivePageSize)
+                .Take(effectivePageSize)
+                .ToList();
+
+            return Ok(new PagedResult<FileModel>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = effectivePageSize,
+                TotalPages = Math.Max(1, totalPages)
+            });
         }
         catch (Exception ex)
         {
