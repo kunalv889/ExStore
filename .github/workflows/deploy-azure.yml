@@ -2,13 +2,14 @@ name: Deploy to Azure
 
 # ── Required GitHub Secrets ──────────────────────────────────────────────────
 # AZURE_CREDENTIALS              Service principal JSON  (az ad sp create-for-rbac)
-# AZURE_RESOURCE_GROUP           Resource group containing Container App + ACR
-# AZURE_REGISTRY_NAME            Azure Container Registry name  (e.g. exstoreacr)
+# AZURE_RESOURCE_GROUP           Resource group containing Container App
 # AZURE_CONTAINER_APP_NAME       Container App name
 # BACKEND_URL                    Container Apps URL  (e.g. https://exstore.xyz.azurecontainerapps.io)
 # AZURE_STATIC_WEB_APPS_API_TOKEN  Deployment token from Static Web Apps resource
+# GHCR_TOKEN                     GitHub PAT with read:packages + write:packages scopes
+#                                 (Container App uses this to pull the image on scale-out)
 # ─────────────────────────────────────────────────────────────────────────────
-# One-time Azure setup (after first deploy to get the URLs):
+# One-time Azure setup (run once via CLI or Azure Portal env vars):
 #   az containerapp update \
 #     --name <app> --resource-group <rg> \
 #     --set-env-vars \
@@ -24,37 +25,52 @@ on:
 
 jobs:
   deploy-backend:
-    name: Deploy Backend → Container Apps
+    name: Deploy Backend → Container Apps (via GHCR)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # needed to push to GHCR
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/exstore-api:latest
+            ghcr.io/${{ github.repository_owner }}/exstore-api:${{ github.sha }}
 
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Configure Container App to pull from ACR
+      - name: Update Container App — pull from GHCR, scale to zero when idle
         run: |
-          az acr update --name ${{ secrets.AZURE_REGISTRY_NAME }} --admin-enabled true
-          ACR_PASSWORD=$(az acr credential show \
-            --name ${{ secrets.AZURE_REGISTRY_NAME }} \
-            --query "passwords[0].value" -o tsv)
           az containerapp registry set \
             --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --server ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io \
-            --username ${{ secrets.AZURE_REGISTRY_NAME }} \
-            --password "$ACR_PASSWORD"
+            --server ghcr.io \
+            --username ${{ github.repository_owner }} \
+            --password "${{ secrets.GHCR_TOKEN }}"
 
-      - name: Build and deploy to Container Apps
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          acrName: ${{ secrets.AZURE_REGISTRY_NAME }}
-          containerAppName: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
-          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          dockerfilePath: Dockerfile
-          appSourcePath: backend
+          az containerapp update \
+            --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ghcr.io/${{ github.repository_owner }}/exstore-api:${{ github.sha }} \
+            --min-replicas 0 \
+            --max-replicas 1
 
   deploy-frontend:
     name: Deploy Frontend → Static Web Apps
