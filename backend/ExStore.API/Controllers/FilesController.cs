@@ -1,8 +1,11 @@
+using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using ExStore.API.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Net.Http.Headers;
 
 namespace ExStore.API.Controllers;
 
@@ -87,48 +90,68 @@ public class FilesController : ControllerBase
     [HttpPost("upload")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
-    public async Task<ActionResult<FileModel>> UploadFile([FromForm] IFormFile file)
+    public async Task<ActionResult<FileModel>> UploadFile()
     {
-        if (file == null || file.Length == 0)
-            return BadRequest("File is required");
+        // Validate multipart content type
+        if (string.IsNullOrEmpty(Request.ContentType) ||
+            !Request.ContentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Multipart form-data required");
 
-        try
+        var boundary = Request.ContentType
+            .Split(';')
+            .Select(p => p.Trim())
+            .FirstOrDefault(p => p.StartsWith("boundary=", StringComparison.OrdinalIgnoreCase))
+            ?["boundary=".Length..].Trim('"');
+
+        if (string.IsNullOrEmpty(boundary))
+            return BadRequest("Missing multipart boundary");
+
+        var containerName = _configuration["AzureBlobStorage:ContainerName"]
+            ?? _configuration["BlobStorage:ContainerName"]
+            ?? "exstore-files";
+        var container = _blobServiceClient.GetBlobContainerClient(containerName);
+        await container.CreateIfNotExistsAsync();
+
+        // Stream each multipart section directly to Azure — no temp disk used
+        var reader = new MultipartReader(boundary, HttpContext.Request.Body);
+        MultipartSection? section;
+
+        while ((section = await reader.ReadNextSectionAsync()) != null)
         {
-            var containerName = _configuration["AzureBlobStorage:ContainerName"]
-                ?? _configuration["BlobStorage:ContainerName"]
-                ?? "exstore-files";
-            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var cd))
+                continue;
+            if (string.IsNullOrEmpty(cd.FileName))
+                continue;
 
-            // Ensure container exists
-            await container.CreateIfNotExistsAsync();
-
-            var blobName = $"{Guid.NewGuid()}_{file.FileName}";
+            // Sanitize filename to prevent path traversal
+            var originalName = Path.GetFileName(cd.FileName.Trim('"'));
+            var contentType = section.ContentType ?? "application/octet-stream";
+            var blobName = $"{Guid.NewGuid()}_{originalName}";
             var blobClient = container.GetBlobClient(blobName);
 
-            using (var stream = file.OpenReadStream())
+            // Upload directly from HTTP stream → Azure Blob Storage (no disk buffer)
+            await blobClient.UploadAsync(section.Body, new BlobUploadOptions
             {
-                var uploadOptions = new BlobUploadOptions
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+                TransferOptions = new StorageTransferOptions
                 {
-                    HttpHeaders = new BlobHttpHeaders { ContentType = file.ContentType }
-                };
-                await blobClient.UploadAsync(stream, uploadOptions);
-            }
+                    MaximumConcurrency = 4,          // 4 parallel block uploads
+                    MaximumTransferSize = 8 * 1024 * 1024  // 8 MB per block
+                }
+            });
 
-            var fileModel = new FileModel
+            var props = await blobClient.GetPropertiesAsync();
+
+            return Ok(new FileModel
             {
-                FileName = file.FileName,
-                ContentType = file.ContentType,
-                Size = file.Length,
+                FileName = blobName,
+                ContentType = contentType,
+                Size = props.Value.ContentLength,
                 BlobUri = blobClient.Uri.ToString()
-            };
+            });
+        }
 
-            return CreatedAtAction(nameof(GetFiles), new { id = fileModel.Id }, fileModel);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error uploading file");
-            return StatusCode(500, "Error uploading file");
-        }
+        return BadRequest("No file found in request");
     }
 
     [HttpDelete("{id}")]

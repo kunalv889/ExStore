@@ -5,9 +5,12 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Remove upload size limits (individual file limits are enforced at the action level)
-builder.Services.Configure<KestrelServerOptions>(o => o.Limits.MaxRequestBodySize = null);
-builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = long.MaxValue);
+// Remove upload size limits — streaming upload avoids disk buffering entirely
+builder.Services.Configure<KestrelServerOptions>(o =>
+{
+    o.Limits.MaxRequestBodySize = null;        // no hard cap on request size
+    o.Limits.MinRequestBodyDataRate = null;    // don't drop slow/large uploads
+});
 
 // Add services
 builder.Services.AddControllers();

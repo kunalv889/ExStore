@@ -37,8 +37,10 @@ function isImage(contentType: string, fileName: string) {
 function isZip(contentType: string, fileName: string) {
     return contentType === 'application/zip' ||
         contentType === 'application/x-zip-compressed' ||
-        (contentType === 'application/octet-stream' && /\.zip$/i.test(fileName)) ||
-        /\.zip$/i.test(fileName)
+        contentType === 'application/x-rar-compressed' ||
+        contentType === 'application/vnd.rar' ||
+        (contentType === 'application/octet-stream' && /\.(zip|rar)$/i.test(fileName)) ||
+        /\.(zip|rar)$/i.test(fileName)
 }
 
 async function triggerDownload(file: FileItem) {
