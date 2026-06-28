@@ -7,6 +7,7 @@ interface FileEntry {
     file: File
     status: FileStatus
     error?: string
+    progress?: number
 }
 
 function formatBytes(bytes: number) {
@@ -55,14 +56,14 @@ export default function Upload() {
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i]
             if (entry.status !== 'pending' && entry.status !== 'error') continue
-            updateEntry(i, { status: 'uploading', error: undefined })
+            updateEntry(i, { status: 'uploading', error: undefined, progress: 0 })
             try {
                 const formData = new FormData()
                 formData.append('file', entry.file)
-                await fileService.uploadFile(formData)
-                updateEntry(i, { status: 'done' })
+                await fileService.uploadFile(formData, pct => updateEntry(i, { progress: pct }))
+                updateEntry(i, { status: 'done', progress: 100 })
             } catch {
-                updateEntry(i, { status: 'error', error: 'Upload failed' })
+                updateEntry(i, { status: 'error', error: 'Upload failed', progress: undefined })
             }
         }
         setUploading(false)
@@ -113,22 +114,41 @@ export default function Upload() {
                         </div>
                         <ul className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
                             {entries.map((entry, i) => (
-                                <li key={i} className={`flex items-center gap-3 px-4 py-2.5 text-sm
+                                <li key={i} className={`px-4 py-2.5 text-sm
                                     ${entry.status === 'done' ? 'bg-green-50' : ''}
                                     ${entry.status === 'error' ? 'bg-red-50' : ''}
                                     ${entry.status === 'uploading' ? 'bg-blue-50' : ''}`}
                                 >
-                                    <span className="text-base w-5 shrink-0">{STATUS_ICON[entry.status]}</span>
-                                    <span className="flex-1 truncate text-gray-700" title={entry.file.name}>
-                                        {entry.file.name}
-                                    </span>
-                                    <span className="text-gray-400 text-xs shrink-0">{formatBytes(entry.file.size)}</span>
-                                    {entry.error && <span className="text-red-500 text-xs shrink-0">{entry.error}</span>}
-                                    {entry.status !== 'uploading' && !uploading && (
-                                        <button type="button" onClick={() => removeEntry(i)}
-                                            className="text-gray-300 hover:text-red-400 transition shrink-0 text-base leading-none">
-                                            ×
-                                        </button>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-base w-5 shrink-0">{STATUS_ICON[entry.status]}</span>
+                                        <span className="flex-1 truncate text-gray-700" title={entry.file.name}>
+                                            {entry.file.name}
+                                        </span>
+                                        <span className="text-gray-400 text-xs shrink-0">{formatBytes(entry.file.size)}</span>
+                                        {entry.status === 'uploading' && entry.progress !== undefined && (
+                                            <span className="text-blue-600 text-xs font-medium shrink-0 text-right">
+                                                {entry.progress < 100 ? `${entry.progress}%` : 'Processing…'}
+                                            </span>
+                                        )}
+                                        {entry.error && <span className="text-red-500 text-xs shrink-0">{entry.error}</span>}
+                                        {entry.status !== 'uploading' && !uploading && (
+                                            <button type="button" onClick={() => removeEntry(i)}
+                                                className="text-gray-300 hover:text-red-400 transition shrink-0 text-base leading-none">
+                                                ×
+                                            </button>
+                                        )}
+                                    </div>
+                                    {entry.status === 'uploading' && entry.progress !== undefined && (
+                                        <div className="mt-1.5 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                                            {entry.progress < 100 ? (
+                                                <div
+                                                    className="h-full bg-blue-500 rounded-full transition-all duration-200"
+                                                    style={{ width: `${entry.progress}%` }}
+                                                />
+                                            ) : (
+                                                <div className="h-full w-full bg-blue-400 rounded-full animate-pulse" />
+                                            )}
+                                        </div>
                                     )}
                                 </li>
                             ))}

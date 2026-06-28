@@ -1,7 +1,13 @@
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Remove upload size limits (individual file limits are enforced at the action level)
+builder.Services.Configure<KestrelServerOptions>(o => o.Limits.MaxRequestBodySize = null);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = long.MaxValue);
 
 // Add services
 builder.Services.AddControllers();

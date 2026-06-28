@@ -13,9 +13,14 @@ const api = axios.create({
 export const fileService = {
     getFiles: (page = 1, pageSize?: number) =>
         api.get('/files', { params: { page, ...(pageSize !== undefined && { pageSize }) } }),
-    uploadFile: (formData: FormData) => api.post('/files/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    uploadFile: (formData: FormData, onProgress?: (pct: number) => void) =>
+        api.post('/files/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            onUploadProgress: e => {
+                if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+            },
+            timeout: 0, // no timeout for large uploads
+        }),
     deleteFile: (id: string) => api.delete(`/files/${id}`),
 }
 
