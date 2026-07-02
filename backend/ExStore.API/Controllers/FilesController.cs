@@ -3,25 +3,49 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using ExStore.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Net.Http.Headers;
+using System.Security.Claims;
 
 namespace ExStore.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class FilesController : ControllerBase
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FilesController> _logger;
 
+    private const long QuotaBytes = 5L * 1024 * 1024 * 1024; // 5 GB per user
+
     public FilesController(BlobServiceClient blobServiceClient, IConfiguration configuration, ILogger<FilesController> logger)
     {
         _blobServiceClient = blobServiceClient;
         _configuration = configuration;
         _logger = logger;
+    }
+
+    private string CurrentUserId =>
+        User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("User ID claim missing");
+
+    private BlobContainerClient GetContainer() =>
+        _blobServiceClient.GetBlobContainerClient(
+            _configuration["AzureBlobStorage:ContainerName"]
+            ?? _configuration["BlobStorage:ContainerName"]
+            ?? "exstore-files");
+
+    // Calculate total bytes used by a user (sums all blobs under their prefix)
+    private async Task<long> GetStorageUsedAsync(BlobContainerClient container, string userId)
+    {
+        long total = 0;
+        await foreach (var blob in container.GetBlobsAsync(prefix: $"{userId}/"))
+            total += blob.Properties.ContentLength ?? 0;
+        return total;
     }
 
     [HttpGet]
@@ -31,37 +55,39 @@ public class FilesController : ControllerBase
     {
         try
         {
+            var userId = CurrentUserId;
             var effectivePageSize = pageSize ?? _configuration.GetValue<int>("Files:PageSize", 10);
             effectivePageSize = Math.Clamp(effectivePageSize, 1, 100);
             page = Math.Max(1, page);
 
-            var containerName = _configuration["AzureBlobStorage:ContainerName"]
-                ?? _configuration["BlobStorage:ContainerName"]
-                ?? "exstore-files";
-            var container = _blobServiceClient.GetBlobContainerClient(containerName);
-
-            var allFiles = new List<FileModel>();
+            var container = GetContainer();
             var sasExpiryHours = _configuration.GetValue<int>("Files:SasExpiryHours", 1);
             var sasExpiry = DateTimeOffset.UtcNow.AddHours(sasExpiryHours);
 
-            await foreach (var blob in container.GetBlobsAsync())
+            var allFiles = new List<FileModel>();
+            long storageUsed = 0;
+
+            // Only list blobs belonging to this user
+            await foreach (var blob in container.GetBlobsAsync(prefix: $"{userId}/"))
             {
                 var blobClient = container.GetBlobClient(blob.Name);
                 var blobUri = blobClient.CanGenerateSasUri
                     ? blobClient.GenerateSasUri(BlobSasPermissions.Read, sasExpiry).ToString()
                     : blobClient.Uri.ToString();
 
+                var size = blob.Properties.ContentLength ?? 0;
+                storageUsed += size;
+
                 allFiles.Add(new FileModel
                 {
                     FileName = blob.Name,
-                    Size = blob.Properties.ContentLength ?? 0,
+                    Size = size,
                     ContentType = blob.Properties.ContentType ?? string.Empty,
                     UploadedAt = blob.Properties.LastModified?.UtcDateTime ?? DateTime.UtcNow,
                     BlobUri = blobUri
                 });
             }
 
-            // Sort newest first
             allFiles = allFiles.OrderByDescending(f => f.UploadedAt).ToList();
 
             var totalCount = allFiles.Count;
@@ -77,7 +103,9 @@ public class FilesController : ControllerBase
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = effectivePageSize,
-                TotalPages = Math.Max(1, totalPages)
+                TotalPages = Math.Max(1, totalPages),
+                StorageUsedBytes = storageUsed,
+                StorageQuotaBytes = QuotaBytes
             });
         }
         catch (Exception ex)
@@ -92,7 +120,6 @@ public class FilesController : ControllerBase
     [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
     public async Task<ActionResult<FileModel>> UploadFile()
     {
-        // Validate multipart content type
         if (string.IsNullOrEmpty(Request.ContentType) ||
             !Request.ContentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase))
             return BadRequest("Multipart form-data required");
@@ -106,13 +133,15 @@ public class FilesController : ControllerBase
         if (string.IsNullOrEmpty(boundary))
             return BadRequest("Missing multipart boundary");
 
-        var containerName = _configuration["AzureBlobStorage:ContainerName"]
-            ?? _configuration["BlobStorage:ContainerName"]
-            ?? "exstore-files";
-        var container = _blobServiceClient.GetBlobContainerClient(containerName);
+        var userId = CurrentUserId;
+        var container = GetContainer();
         await container.CreateIfNotExistsAsync();
 
-        // Stream each multipart section directly to Azure — no temp disk used
+        // Quota pre-check: reject if already at limit
+        var used = await GetStorageUsedAsync(container, userId);
+        if (used >= QuotaBytes)
+            return StatusCode(413, new { message = "Storage quota exceeded (5 GB limit).", storageUsedBytes = used, storageQuotaBytes = QuotaBytes });
+
         var reader = new MultipartReader(boundary, HttpContext.Request.Body);
         MultipartSection? section;
 
@@ -123,25 +152,24 @@ public class FilesController : ControllerBase
             if (string.IsNullOrEmpty(cd.FileName))
                 continue;
 
-            // Sanitize filename to prevent path traversal
             var originalName = Path.GetFileName(cd.FileName.Trim('"'));
             var contentType = section.ContentType ?? "application/octet-stream";
-            var blobName = $"{Guid.NewGuid()}_{originalName}";
+
+            // Store under user's "folder": {userId}/{guid}_{filename}
+            var blobName = $"{userId}/{Guid.NewGuid()}_{originalName}";
             var blobClient = container.GetBlobClient(blobName);
 
-            // Upload directly from HTTP stream → Azure Blob Storage (no disk buffer)
             await blobClient.UploadAsync(section.Body, new BlobUploadOptions
             {
                 HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
                 TransferOptions = new StorageTransferOptions
                 {
-                    MaximumConcurrency = 4,          // 4 parallel block uploads
-                    MaximumTransferSize = 8 * 1024 * 1024  // 8 MB per block
+                    MaximumConcurrency = 4,
+                    MaximumTransferSize = 8 * 1024 * 1024
                 }
             });
 
             var props = await blobClient.GetPropertiesAsync();
-
             return Ok(new FileModel
             {
                 FileName = blobName,
@@ -154,24 +182,26 @@ public class FilesController : ControllerBase
         return BadRequest("No file found in request");
     }
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteFile(string id)
+    [HttpDelete("{*blobName}")]
+    public async Task<IActionResult> DeleteFile(string blobName)
     {
+        var userId = CurrentUserId;
+
+        // Security: users can only delete their own files
+        if (!blobName.StartsWith($"{userId}/", StringComparison.Ordinal))
+            return Forbid();
+
         try
         {
-            var containerName = _configuration["AzureBlobStorage:ContainerName"]
-                ?? _configuration["BlobStorage:ContainerName"]
-                ?? "exstore-files";
-            var container = _blobServiceClient.GetBlobContainerClient(containerName);
-            var blobClient = container.GetBlobClient(id);
-
-            await blobClient.DeleteIfExistsAsync();
+            var container = GetContainer();
+            await container.GetBlobClient(blobName).DeleteIfExistsAsync();
             return NoContent();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting file");
+            _logger.LogError(ex, "Error deleting file {BlobName}", blobName);
             return StatusCode(500, "Error deleting file");
         }
     }
 }
+

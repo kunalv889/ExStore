@@ -17,6 +17,8 @@ interface PagedResult {
     page: number
     pageSize: number
     totalPages: number
+    storageUsedBytes: number
+    storageQuotaBytes: number
 }
 
 function formatBytes(bytes: number) {
@@ -26,7 +28,9 @@ function formatBytes(bytes: number) {
 }
 
 function displayName(fileName: string) {
-    return fileName.replace(/^[0-9a-f-]{36}_/i, '')
+    // Strip user-id prefix (e.g. "userId/guid_name.jpg" → "name.jpg")
+    const afterSlash = fileName.includes('/') ? fileName.split('/').slice(1).join('/') : fileName
+    return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
 }
 
 function isImage(contentType: string, fileName: string) {
@@ -248,9 +252,23 @@ export default function Photos() {
                 <div>
                     <h1 className="text-4xl font-bold">All Files</h1>
                     {result && (
-                        <p className="text-gray-500 mt-1">
-                            {result.totalCount} file{result.totalCount !== 1 ? 's' : ''} total
-                        </p>
+                        <>
+                            <p className="text-gray-500 mt-1">
+                                {result.totalCount} file{result.totalCount !== 1 ? 's' : ''} total
+                            </p>
+                            <div className="mt-2 w-52">
+                                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>{formatBytes(result.storageUsedBytes)} used</span>
+                                    <span>{formatBytes(result.storageQuotaBytes)}</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${
+                                        result.storageUsedBytes / result.storageQuotaBytes > 0.9 ? 'bg-red-500' :
+                                        result.storageUsedBytes / result.storageQuotaBytes > 0.7 ? 'bg-yellow-500' : 'bg-blue-500'
+                                    }`} style={{ width: `${Math.min(100, (result.storageUsedBytes / result.storageQuotaBytes) * 100).toFixed(1)}%` }} />
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">

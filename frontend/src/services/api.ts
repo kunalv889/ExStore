@@ -5,10 +5,36 @@ const API_BASE_URL = ((viteEnv?.VITE_API_BASE_URL as string) || 'https://localho
 
 const api = axios.create({
     baseURL: `${API_BASE_URL}/api`,
-    headers: {
-        'Content-Type': 'application/json',
-    }
+    headers: { 'Content-Type': 'application/json' }
 })
+
+// Attach JWT token to every request
+api.interceptors.request.use(config => {
+    const token = localStorage.getItem('auth_token')
+    if (token) config.headers.Authorization = `Bearer ${token}`
+    return config
+})
+
+// Auto-redirect to login on 401
+api.interceptors.response.use(
+    res => res,
+    err => {
+        if (err.response?.status === 401) {
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('auth_user')
+            window.location.href = '/login'
+        }
+        return Promise.reject(err)
+    }
+)
+
+export const authService = {
+    login: (email: string, password: string) =>
+        api.post('/auth/login', { email, password }),
+    register: (name: string, email: string, password: string) =>
+        api.post('/auth/register', { name, email, password }),
+    me: () => api.get('/auth/me'),
+}
 
 export const fileService = {
     getFiles: (page = 1, pageSize?: number) =>
@@ -19,9 +45,17 @@ export const fileService = {
             onUploadProgress: e => {
                 if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
             },
-            timeout: 0, // no timeout for large uploads
+            timeout: 0,
         }),
-    deleteFile: (id: string) => api.delete(`/files/${id}`),
+    deleteFile: (blobName: string) =>
+        api.delete(`/files/${encodeURIComponent(blobName)}`),
+}
+
+export const adminService = {
+    getUsers: () => api.get('/admin/users'),
+    getPendingUsers: () => api.get('/admin/users/pending'),
+    approveUser: (id: string) => api.post(`/admin/users/${id}/approve`),
+    revokeUser: (id: string) => api.post(`/admin/users/${id}/revoke`),
 }
 
 export const galleryService = {

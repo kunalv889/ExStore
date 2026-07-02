@@ -7,4 +7,6 @@ public class PagedResult<T>
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages { get; set; }
+    public long StorageUsedBytes { get; set; }
+    public long StorageQuotaBytes { get; set; }
 }

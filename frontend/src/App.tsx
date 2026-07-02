@@ -1,22 +1,53 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Home from './pages/Home'
 import Gallery from './pages/Gallery'
 import Upload from './pages/Upload'
 import Photos from './pages/Photos'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import PendingApproval from './pages/PendingApproval'
+import Admin from './pages/Admin'
 import Navigation from './components/Navigation'
+
+function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
+    const { isAuthenticated, isAdmin } = useAuth()
+    if (!isAuthenticated) return <Navigate to="/login" replace />
+    if (adminOnly && !isAdmin) return <Navigate to="/" replace />
+    return <>{children}</>
+}
+
+function AppRoutes() {
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <Navigation />
+            <Routes>
+                {/* Public routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/pending-approval" element={<PendingApproval />} />
+
+                {/* Protected routes */}
+                <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                <Route path="/photos" element={<ProtectedRoute><Photos /></ProtectedRoute>} />
+                <Route path="/gallery/:id" element={<ProtectedRoute><Gallery /></ProtectedRoute>} />
+                <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+
+                {/* Admin only */}
+                <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
+
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </div>
+    )
+}
 
 function App() {
     return (
         <Router>
-            <div className="min-h-screen bg-gray-50">
-                <Navigation />
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/photos" element={<Photos />} />
-                    <Route path="/gallery/:id" element={<Gallery />} />
-                    <Route path="/upload" element={<Upload />} />
-                </Routes>
-            </div>
+            <AuthProvider>
+                <AppRoutes />
+            </AuthProvider>
         </Router>
     )
 }
