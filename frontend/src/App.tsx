@@ -1,9 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Home from './pages/Home'
-import Gallery from './pages/Gallery'
-import Upload from './pages/Upload'
-import Photos from './pages/Photos'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import PendingApproval from './pages/PendingApproval'
@@ -29,9 +26,6 @@ function AppRoutes() {
 
                 {/* Protected routes */}
                 <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-                <Route path="/photos" element={<ProtectedRoute><Photos /></ProtectedRoute>} />
-                <Route path="/gallery/:id" element={<ProtectedRoute><Gallery /></ProtectedRoute>} />
-                <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
 
                 {/* Admin only */}
                 <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />

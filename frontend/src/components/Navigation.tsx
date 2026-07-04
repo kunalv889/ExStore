@@ -20,9 +20,6 @@ export default function Navigation() {
                         ExStore
                     </Link>
                     <div className="flex items-center gap-6">
-                        <Link to="/" className="text-gray-700 hover:text-blue-600 transition text-sm">Home</Link>
-                        <Link to="/photos" className="text-gray-700 hover:text-blue-600 transition text-sm">Files</Link>
-                        <Link to="/upload" className="text-gray-700 hover:text-blue-600 transition text-sm">Upload</Link>
                         {isAdmin && (
                             <Link to="/admin" className="text-gray-700 hover:text-blue-600 transition text-sm font-medium">Admin</Link>
                         )}

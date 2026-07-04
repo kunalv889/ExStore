@@ -107,6 +107,8 @@ public class AuthController : ControllerBase
         Name = u.Name,
         Role = u.Role.ToString(),
         IsApproved = u.IsApproved,
-        CreatedAt = u.CreatedAt
+        CreatedAt = u.CreatedAt,
+        StorageQuotaGB = u.StorageQuotaGB,
+        IsUploadLocked = u.IsUploadLocked
     };
 }

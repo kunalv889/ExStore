@@ -56,4 +56,21 @@ public class AdminController : ControllerBase
         await _users.UpdateAsync(user);
         return Ok(new { message = $"{user.Name}'s access has been revoked." });
     }
+
+    /// <summary>Update per-user storage quota (1–100 GB) and upload lock.</summary>
+    [HttpPut("users/{id}/settings")]
+    public async Task<IActionResult> UpdateUserSettings(string id, [FromBody] UserSettingsRequest req)
+    {
+        if (req.StorageQuotaGB < 1 || req.StorageQuotaGB > 100)
+            return BadRequest("StorageQuotaGB must be between 1 and 100.");
+
+        var user = await _users.GetByIdAsync(id);
+        if (user is null) return NotFound();
+
+        user.StorageQuotaGB = req.StorageQuotaGB;
+        user.IsUploadLocked = req.IsUploadLocked;
+        await _users.UpdateAsync(user);
+
+        return Ok(AuthController.ToDto(user));
+    }
 }

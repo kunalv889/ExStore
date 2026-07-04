@@ -37,18 +37,24 @@ export const authService = {
 }
 
 export const fileService = {
-    getFiles: (page = 1, pageSize?: number) =>
-        api.get('/files', { params: { page, ...(pageSize !== undefined && { pageSize }) } }),
-    uploadFile: (formData: FormData, onProgress?: (pct: number) => void) =>
+    getFiles: (page = 1, pageSize?: number, path?: string) =>
+        api.get('/files', { params: { page, ...(pageSize !== undefined && { pageSize }), ...(path !== undefined && { path }) } }),
+    uploadFile: (formData: FormData, onProgress?: (pct: number) => void, path?: string) =>
         api.post('/files/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            params: path ? { path } : undefined,
             onUploadProgress: e => {
                 if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
             },
             timeout: 0,
         }),
-    deleteFile: (blobName: string) =>
-        api.delete(`/files/${encodeURIComponent(blobName)}`),
+    deleteFile: (blobName: string) => {
+        // Directories are deleted by their full prefix ending in '/'
+        const encoded = blobName.split('/').map(encodeURIComponent).join('/')
+        return api.delete(`/files/${encoded}`)
+    },
+    createDirectory: (name: string, path?: string) =>
+        api.post('/files/directory', null, { params: { name, ...(path ? { path } : {}) } }),
 }
 
 export const adminService = {
@@ -56,6 +62,8 @@ export const adminService = {
     getPendingUsers: () => api.get('/admin/users/pending'),
     approveUser: (id: string) => api.post(`/admin/users/${id}/approve`),
     revokeUser: (id: string) => api.post(`/admin/users/${id}/revoke`),
+    updateUserSettings: (id: string, storageQuotaGB: number, isUploadLocked: boolean) =>
+        api.put(`/admin/users/${id}/settings`, { storageQuotaGB, isUploadLocked }),
 }
 
 export const galleryService = {

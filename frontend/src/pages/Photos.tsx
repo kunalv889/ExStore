@@ -256,18 +256,29 @@ export default function Photos() {
                             <p className="text-gray-500 mt-1">
                                 {result.totalCount} file{result.totalCount !== 1 ? 's' : ''} total
                             </p>
-                            <div className="mt-2 w-52">
-                                <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                    <span>{formatBytes(result.storageUsedBytes)} used</span>
-                                    <span>{formatBytes(result.storageQuotaBytes)}</span>
-                                </div>
-                                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full transition-all ${
-                                        result.storageUsedBytes / result.storageQuotaBytes > 0.9 ? 'bg-red-500' :
-                                        result.storageUsedBytes / result.storageQuotaBytes > 0.7 ? 'bg-yellow-500' : 'bg-blue-500'
-                                    }`} style={{ width: `${Math.min(100, (result.storageUsedBytes / result.storageQuotaBytes) * 100).toFixed(1)}%` }} />
-                                </div>
-                            </div>
+                            {(() => {
+                                const pct = result.storageQuotaBytes > 0
+                                    ? Math.min(100, (result.storageUsedBytes / result.storageQuotaBytes) * 100)
+                                    : 0
+                                const color = pct > 90 ? 'bg-red-500 text-red-600' : pct > 70 ? 'bg-yellow-500 text-yellow-600' : 'bg-blue-500 text-blue-600'
+                                const barColor = color.split(' ')[0]
+                                const textColor = color.split(' ')[1]
+                                return (
+                                    <div className="mt-3 w-64">
+                                        <div className="flex justify-between items-baseline mb-1.5">
+                                            <span className="text-sm font-medium text-gray-700">Storage</span>
+                                            <span className={`text-sm font-semibold ${textColor}`}>{pct.toFixed(1)}%</span>
+                                        </div>
+                                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct.toFixed(1)}%` }} />
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                            <span>{formatBytes(result.storageUsedBytes)} used</span>
+                                            <span>{formatBytes(result.storageQuotaBytes)} quota</span>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
                         </>
                     )}
                 </div>
