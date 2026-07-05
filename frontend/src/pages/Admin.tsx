@@ -47,53 +47,62 @@ function UserRow({ user, onRefresh }: { user: UserRecord; onRefresh: () => void 
         <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
             {/* Identity */}
             <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${user.isApproved ? 'bg-green-400' : 'bg-yellow-400'}`} />
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center shrink-0 shadow-sm">
+                    <span className="text-white text-sm font-bold">{user.name.charAt(0).toUpperCase()}</span>
+                </div>
                 <div className="min-w-0">
-                    <p className="font-medium text-gray-800 truncate">
+                    <p className="font-semibold text-slate-800 truncate flex items-center gap-1.5">
                         {user.name}
                         {user.role === 'Admin' && (
-                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Admin</span>
+                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">Admin</span>
                         )}
                         {user.isUploadLocked && (
-                            <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">🔒 Uploads locked</span>
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Locked</span>
+                        )}
+                        {!user.isApproved && user.role !== 'Admin' && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pending</span>
                         )}
                     </p>
-                    <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                    <p className="text-sm text-slate-400 truncate">{user.email}</p>
                 </div>
             </div>
 
             {/* Controls */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
                 {/* Quota input */}
-                <div className="flex items-center gap-1">
-                    <label className="text-xs text-gray-500">Quota</label>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                    <span className="text-xs text-slate-400 font-medium">Quota</span>
                     <input
                         type="number" min={1} max={100}
                         value={quotaInput}
                         onChange={e => setQuotaInput(Number(e.target.value))}
-                        className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-14 bg-transparent text-sm text-center text-slate-700 font-semibold focus:outline-none"
                     />
-                    <span className="text-xs text-gray-400">GB</span>
+                    <span className="text-xs text-slate-400">GB</span>
                 </div>
 
                 {/* Lock toggle — not for admins */}
                 {user.role !== 'Admin' && (
                     <button
                         onClick={() => setLocked(l => !l)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition ${
                             locked
-                                ? 'bg-red-50 border-red-300 text-red-600'
-                                : 'bg-gray-50 border-gray-300 text-gray-600'
+                                ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                     >
-                        {locked ? '🔒 Locked' : '🔓 Unlocked'}
+                        {locked ? (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>Locked</>
+                        ) : (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>Unlocked</>
+                        )}
                     </button>
                 )}
 
                 {/* Save settings */}
                 <button
                     onClick={saveSettings} disabled={saving}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                    className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm"
                 >
                     {saving ? '…' : 'Save'}
                 </button>
@@ -101,19 +110,19 @@ function UserRow({ user, onRefresh }: { user: UserRecord; onRefresh: () => void 
                 {/* Approve / Revoke — not for admins */}
                 {user.role !== 'Admin' && !user.isApproved && (
                     <button onClick={approve} disabled={!!actionLoading}
-                        className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition">
+                        className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm">
                         {actionLoading === 'approve' ? '…' : 'Approve'}
                     </button>
                 )}
                 {user.role !== 'Admin' && user.isApproved && (
                     <button onClick={revoke} disabled={!!actionLoading}
-                        className="px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition">
+                        className="px-3 py-1.5 text-xs font-semibold bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-50 transition shadow-sm">
                         {actionLoading === 'revoke' ? '…' : 'Revoke'}
                     </button>
                 )}
 
                 {msg && (
-                    <span className={`text-xs ${msg === 'Saved' ? 'text-green-600' : 'text-red-500'}`}>{msg}</span>
+                    <span className={`text-xs font-medium ${msg === 'Saved' ? 'text-emerald-600' : 'text-red-500'}`}>{msg}</span>
                 )}
             </div>
         </div>
@@ -140,20 +149,35 @@ export default function Admin() {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
-            <h1 className="text-4xl font-bold mb-2">Admin Panel</h1>
-            <p className="text-gray-500 mb-8">{users.length} total users · {pending.length} pending approval</p>
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent mb-1">Admin Panel</h1>
+                <p className="text-slate-400 text-sm">{users.length} total user{users.length !== 1 ? 's' : ''} &middot; {pending.length} pending approval</p>
+            </div>
 
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
-            {loading && <div className="text-gray-400 text-center py-10">Loading…</div>}
+            {error && (
+                <div className="mb-4 p-3.5 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                    {error}
+                </div>
+            )}
+            {loading && (
+                <div className="flex items-center justify-center py-20 gap-3 text-slate-400">
+                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span className="text-sm">Loading&hellip;</span>
+                </div>
+            )}
 
             {/* Pending approvals */}
             {!loading && pending.length > 0 && (
                 <section className="mb-8">
-                    <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                        <span className="bg-yellow-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>
+                    <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <span className="bg-amber-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>
                         Pending Approval
                     </h2>
-                    <div className="divide-y divide-yellow-100 border border-yellow-200 rounded-xl overflow-hidden bg-yellow-50">
+                    <div className="divide-y divide-amber-100 border border-amber-200 rounded-2xl overflow-hidden bg-amber-50/60 shadow-sm">
                         {pending.map(u => <UserRow key={u.id} user={u} onRefresh={load} />)}
                     </div>
                 </section>
@@ -162,9 +186,11 @@ export default function Admin() {
             {/* All users */}
             {!loading && (
                 <section>
-                    <h2 className="text-lg font-semibold mb-3">All Users ({users.length})</h2>
-                    <p className="text-xs text-gray-400 mb-3">Set storage quota (1–100 GB) and toggle upload lock per user, then click Save.</p>
-                    <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-base font-semibold text-slate-700">All Users <span className="text-slate-400 font-normal">({users.length})</span></h2>
+                        <p className="text-xs text-slate-400">Set quota (1–100 GB) and upload lock per user, then Save.</p>
+                    </div>
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
                         {users.map(u => <UserRow key={u.id} user={u} onRefresh={load} />)}
                     </div>
                 </section>
