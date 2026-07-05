@@ -26,12 +26,17 @@ export default function Navigation() {
 
                     {/* Right side */}
                     <div className="flex items-center gap-1">
-                        {isAdmin && (
-                            <Link to="/admin"
-                                className="text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all">
-                                Admin
-                            </Link>
-                        )}
+                    {/* Nav links */}
+                    <Link to="/shares"
+                        className="text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all">
+                        Shares
+                    </Link>
+                    {isAdmin && (
+                        <Link to="/admin"
+                            className="text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all">
+                            Admin
+                        </Link>
+                    )}
 
                         <div className="flex items-center gap-2 ml-2 pl-3 border-l border-slate-200">
                             {/* Avatar */}

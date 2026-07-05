@@ -74,4 +74,26 @@ export const galleryService = {
     shareGallery: (id: string) => api.post(`/galleries/${id}/share`, {}),
 }
 
+// Separate axios instance for share access — no auto-redirect on 401
+// (public share pages must handle 401 gracefully instead of forcing login)
+const publicApi = axios.create({ baseURL: `${API_BASE_URL}/api` })
+publicApi.interceptors.request.use(config => {
+    const token = localStorage.getItem('auth_token')
+    if (token) config.headers.Authorization = `Bearer ${token}`
+    return config
+})
+
+export const shareService = {
+    /** All shares owned by the current user. Pass blobName to filter. */
+    getMyShares: (blobName?: string) =>
+        api.get('/shares', { params: blobName ? { blobName } : undefined }),
+    /** Create a share. type = 'Public' | 'Internal' */
+    createShare: (blobName: string, displayName: string, isDirectory: boolean, type: 'Public' | 'Internal') =>
+        api.post('/shares', { blobName, displayName, isDirectory, type }),
+    /** Revoke a share by its ID. */
+    revokeShare: (shareId: string) => api.delete(`/shares/${shareId}`),
+    /** Resolve a share link. Works for public shares without auth. */
+    accessShare: (shareId: string) => publicApi.get(`/shares/${shareId}/access`),
+}
+
 export default api

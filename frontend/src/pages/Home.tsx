@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fileService } from '../services/api'
+import ShareModal from '../components/ShareModal'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
@@ -98,6 +99,8 @@ export default function Home() {
     const [newDirName, setNewDirName] = useState('')
     const [newDirOpen, setNewDirOpen] = useState(false)
     const [creatingDir, setCreatingDir] = useState(false)
+
+    const [sharingItem, setSharingItem] = useState<{ blobName: string; displayName: string; isDirectory: boolean } | null>(null)
 
     const imageItems = result?.items.filter(f => !f.isDirectory && isImage(f.contentType, f.fileName)) ?? []
 
@@ -600,8 +603,20 @@ export default function Home() {
                                         )}
                                     </div>
                                     <div className="px-2.5 py-2 border-t border-slate-100">
-                                        <p className="text-xs text-slate-700 truncate font-medium" title={name}>{name}</p>
-                                        {!file.isDirectory && <p className="text-xs text-slate-400 mt-0.5">{formatBytes(file.size)}</p>}
+                                        <div className="flex items-start justify-between gap-1">
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-slate-700 truncate font-medium" title={name}>{name}</p>
+                                                {!file.isDirectory && <p className="text-xs text-slate-400 mt-0.5">{formatBytes(file.size)}</p>}
+                                            </div>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); setSharingItem({ blobName: file.isDirectory ? file.fileName.replace(/\/$/, '') : file.fileName, displayName: name, isDirectory: file.isDirectory }) }}
+                                                className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 transition -mr-0.5 mt-0.5"
+                                                title="Share">
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )
@@ -634,6 +649,15 @@ export default function Home() {
                         <span className="ml-3 text-xs opacity-60">{lightboxIndex! + 1} / {imageItems.length}</span>
                     </div>
                 </div>
+            )}
+            {/* Share Modal */}
+            {sharingItem && (
+                <ShareModal
+                    blobName={sharingItem.blobName}
+                    displayName={sharingItem.displayName}
+                    isDirectory={sharingItem.isDirectory}
+                    onClose={() => setSharingItem(null)}
+                />
             )}
         </div>
     )
