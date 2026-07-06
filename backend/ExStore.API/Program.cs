@@ -2,6 +2,7 @@ using Azure.Storage.Blobs;
 using ExStore.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -105,6 +106,15 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure middleware
+
+// Trust X-Forwarded-Proto / X-Forwarded-For headers set by Azure Container Apps ingress.
+// This ensures Request.Scheme returns "https" when the app sits behind HTTPS termination,
+// which is required for the backend to generate correct https:// proxy download URLs.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 app.UseCors("AllowFrontend");
 
 if (app.Environment.IsDevelopment())
