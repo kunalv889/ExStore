@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { profileService } from '../services/api'
 
@@ -20,7 +21,8 @@ function Spinner() {
 }
 
 export default function Profile() {
-    const { user, updateUser } = useAuth()
+    const { user, updateUser, logout } = useAuth()
+    const navigate = useNavigate()
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     // --- Avatar state ---
@@ -41,6 +43,12 @@ export default function Profile() {
     const [pwLoading, setPwLoading] = useState(false)
     const [pwSuccess, setPwSuccess] = useState(false)
     const [pwError, setPwError] = useState<string | null>(null)
+
+    // --- Delete account state ---
+    const [deleteOpen, setDeleteOpen] = useState(false)
+    const [deleteConfirm, setDeleteConfirm] = useState('')
+    const [deleteLoading, setDeleteLoading] = useState(false)
+    const [deleteError, setDeleteError] = useState<string | null>(null)
 
     // ---- Avatar handlers ----
 
@@ -130,6 +138,22 @@ export default function Profile() {
             setPwError(err.response?.data || 'Failed to change password')
         } finally {
             setPwLoading(false)
+        }
+    }
+
+    // ---- Delete account handler ----
+
+    const handleDeleteAccount = async () => {
+        if (deleteConfirm !== 'DELETE') return
+        setDeleteError(null)
+        setDeleteLoading(true)
+        try {
+            await profileService.deleteAccount()
+            logout()
+            navigate('/login')
+        } catch (err: any) {
+            setDeleteError(err.response?.data || 'Failed to delete account. Please try again.')
+            setDeleteLoading(false)
         }
     }
 
@@ -311,6 +335,83 @@ export default function Profile() {
                         )}
                     </div>
                 </form>
+            </section>
+            {/* ── Danger Zone Card ── */}
+            <section className="bg-white rounded-2xl border border-rose-200 shadow-sm p-6 mt-5">
+                <h2 className="text-sm font-semibold text-rose-600 uppercase tracking-wide mb-1">Danger Zone</h2>
+                <p className="text-sm text-slate-500 mb-4">
+                    Permanently delete your account and all your files. This action cannot be undone.
+                </p>
+
+                {!deleteOpen ? (
+                    <button
+                        type="button"
+                        onClick={() => setDeleteOpen(true)}
+                        className="px-4 py-2 text-sm font-semibold text-rose-600 border border-rose-300 rounded-xl hover:bg-rose-50 transition"
+                    >
+                        Delete my account
+                    </button>
+                ) : (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-rose-800">This will permanently delete:</p>
+                                <ul className="text-sm text-rose-700 mt-1 list-disc list-inside space-y-0.5">
+                                    <li>Your account and profile</li>
+                                    <li>All your uploaded files and folders</li>
+                                    <li>All your share links</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-rose-700 mb-1.5">
+                                Type <span className="font-mono font-bold">DELETE</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={deleteConfirm}
+                                onChange={e => setDeleteConfirm(e.target.value)}
+                                placeholder="DELETE"
+                                autoComplete="off"
+                                className="w-full rounded-xl border border-rose-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent transition"
+                            />
+                        </div>
+
+                        {deleteError && (
+                            <p className="text-sm text-rose-700 bg-rose-100 rounded-lg px-3 py-2">{deleteError}</p>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handleDeleteAccount}
+                                disabled={deleteConfirm !== 'DELETE' || deleteLoading}
+                                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            >
+                                {deleteLoading ? <Spinner /> : (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                    </svg>
+                                )}
+                                Delete my account permanently
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setDeleteOpen(false); setDeleteConfirm(''); setDeleteError(null) }}
+                                disabled={deleteLoading}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
             </section>
         </main>
     )

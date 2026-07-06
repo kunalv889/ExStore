@@ -52,6 +52,13 @@ public class UserService
         await SaveAsync(users);
     }
 
+    public async Task DeleteAsync(string userId)
+    {
+        var users = await GetAllAsync();
+        users.RemoveAll(u => u.Id == userId);
+        await SaveAsync(users);
+    }
+
     public async Task EnsureAdminAsync(string email, string password)
     {
         if (await GetByEmailAsync(email) != null) return;

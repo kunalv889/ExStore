@@ -195,6 +195,52 @@ public class AuthController : ControllerBase
         return File(download.Value.Content, contentType);
     }
 
+    [HttpDelete("account")]
+    [Authorize]
+    public async Task<IActionResult> DeleteAccount()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var user = await _users.GetByIdAsync(userId!);
+        if (user is null) return NotFound();
+
+        var authContainerName = _config["Auth:UsersContainer"] ?? "exstore-auth";
+        var filesContainerName = _config["AzureBlobStorage:ContainerName"]
+            ?? _config["BlobStorage:ContainerName"]
+            ?? "exstore-files";
+
+        // 1. Delete all user files
+        var filesContainer = _blobServiceClient.GetBlobContainerClient(filesContainerName);
+        await foreach (var blob in filesContainer.GetBlobsAsync(prefix: $"{userId}/"))
+            await filesContainer.GetBlobClient(blob.Name).DeleteIfExistsAsync();
+
+        // 2. Delete avatar
+        if (!string.IsNullOrEmpty(user.AvatarBlobName))
+        {
+            var authContainer = _blobServiceClient.GetBlobContainerClient(authContainerName);
+            await authContainer.GetBlobClient(user.AvatarBlobName).DeleteIfExistsAsync();
+        }
+
+        // 3. Remove user's shares from shares.json
+        var sharesContainer = _blobServiceClient.GetBlobContainerClient(authContainerName);
+        var sharesBlob = sharesContainer.GetBlobClient("shares.json");
+        if (await sharesBlob.ExistsAsync())
+        {
+            var download = await sharesBlob.DownloadContentAsync();
+            var shares = System.Text.Json.JsonSerializer.Deserialize<List<ShareRecord>>(
+                download.Value.Content,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            var remaining = shares.Where(s => s.OwnerId != userId).ToList();
+            var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                remaining, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+            await sharesBlob.UploadAsync(new BinaryData(json), overwrite: true);
+        }
+
+        // 4. Delete user record
+        await _users.DeleteAsync(userId!);
+
+        return NoContent();
+    }
+
     private string GenerateToken(User user)
     {
         var secret = _config["Jwt:Secret"]

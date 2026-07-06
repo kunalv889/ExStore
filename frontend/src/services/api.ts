@@ -94,6 +94,7 @@ export const profileService = {
         return api.post('/auth/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
     deleteAvatar: () => api.delete('/auth/avatar'),
+    deleteAccount: () => api.delete('/auth/account'),
     avatarUrl: (userId: string) => `${API_BASE_URL}/api/auth/avatar/${userId}`,
 }
 
