@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using ExStore.API.Models;
+using ExStore.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -15,14 +16,19 @@ public class SharesController : ControllerBase
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly IConfiguration _configuration;
+    private readonly UserService _userService;
     private static readonly SemaphoreSlim _lock = new(1, 1);
     private const string AuthContainerName = "exstore-auth";
     private const string SharesBlobName = "shares.json";
 
-    public SharesController(BlobServiceClient blobServiceClient, IConfiguration configuration)
+    public SharesController(
+        BlobServiceClient blobServiceClient,
+        IConfiguration configuration,
+        UserService userService)
     {
         _blobServiceClient = blobServiceClient;
         _configuration = configuration;
+        _userService = userService;
     }
 
     private string CurrentUserId =>
@@ -60,6 +66,20 @@ public class SharesController : ControllerBase
         await blob.UploadAsync(new BinaryData(json), overwrite: true);
     }
 
+    /// <summary>List approved users available to share with (excludes the current user).</summary>
+    [HttpGet("users")]
+    public async Task<IActionResult> GetShareableUsers()
+    {
+        var currentUserId = CurrentUserId;
+        var users = await _userService.GetAllAsync();
+        var result = users
+            .Where(u => u.IsApproved && u.Id != currentUserId)
+            .OrderBy(u => u.Name)
+            .Select(u => new { u.Id, u.Name, u.Email })
+            .ToList();
+        return Ok(result);
+    }
+
     /// <summary>List the current user's shares. Optionally filter by blobName.</summary>
     [HttpGet]
     public async Task<IActionResult> GetMyShares([FromQuery] string? blobName = null)
@@ -95,7 +115,8 @@ public class SharesController : ControllerBase
             BlobName = request.BlobName,
             DisplayName = request.DisplayName,
             IsDirectory = request.IsDirectory,
-            Type = request.Type
+            Type = request.Type,
+            AllowedUserIds = request.AllowedUserIds ?? []
         };
 
         await _lock.WaitAsync();
@@ -103,12 +124,17 @@ public class SharesController : ControllerBase
         {
             var shares = await LoadSharesAsync();
 
-            // Return existing share if the same blobName+type already has one
+            // Update existing share in-place (preserves the link ID)
             var existing = shares.FirstOrDefault(s =>
                 s.OwnerId == userId &&
                 s.BlobName == request.BlobName &&
                 s.Type == request.Type);
-            if (existing != null) return Ok(existing);
+            if (existing != null)
+            {
+                existing.AllowedUserIds = share.AllowedUserIds;
+                await SaveSharesAsync(shares);
+                return Ok(existing);
+            }
 
             shares.Add(share);
             await SaveSharesAsync(shares);
@@ -155,6 +181,10 @@ public class SharesController : ControllerBase
             var authUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(authUserId))
                 return Unauthorized(new { message = "This link requires you to be signed in to ExStore.", requiresAuth = true });
+
+            // If restricted to specific users, verify access
+            if (share.AllowedUserIds.Count > 0 && !share.AllowedUserIds.Contains(authUserId))
+                return StatusCode(403, new { message = "You don't have permission to view this shared content." });
         }
 
         var container = GetFilesContainer();
@@ -233,6 +263,7 @@ public class SharesController : ControllerBase
         s.IsDirectory,
         s.Type,
         s.OwnerName,
-        createdAt = s.CreatedAt.ToString("o")
+        createdAt = s.CreatedAt.ToString("o"),
+        allowedUserIds = s.AllowedUserIds
     };
 }

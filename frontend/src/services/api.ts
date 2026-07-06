@@ -87,9 +87,16 @@ export const shareService = {
     /** All shares owned by the current user. Pass blobName to filter. */
     getMyShares: (blobName?: string) =>
         api.get('/shares', { params: blobName ? { blobName } : undefined }),
-    /** Create a share. type = 'Public' | 'Internal' */
-    createShare: (blobName: string, displayName: string, isDirectory: boolean, type: 'Public' | 'Internal') =>
-        api.post('/shares', { blobName, displayName, isDirectory, type }),
+    /** Approved users available to share with (excludes self). */
+    getShareableUsers: () => api.get('/shares/users'),
+    /** Create or update a share. type = 'Public' | 'Internal'. allowedUserIds empty = all users. */
+    createShare: (
+        blobName: string,
+        displayName: string,
+        isDirectory: boolean,
+        type: 'Public' | 'Internal',
+        allowedUserIds: string[] = []
+    ) => api.post('/shares', { blobName, displayName, isDirectory, type, allowedUserIds }),
     /** Revoke a share by its ID. */
     revokeShare: (shareId: string) => api.delete(`/shares/${shareId}`),
     /** Resolve a share link. Works for public shares without auth. */

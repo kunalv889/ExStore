@@ -20,7 +20,7 @@ interface ShareInfo {
     createdAt: string
 }
 
-type PageState = 'loading' | 'auth-required' | 'not-found' | 'error' | 'loaded'
+type PageState = 'loading' | 'auth-required' | 'forbidden' | 'not-found' | 'error' | 'loaded'
 
 function formatBytes(bytes: number) {
     if (bytes < 1024) return `${bytes} B`
@@ -78,6 +78,8 @@ export default function SharedView() {
             .catch(err => {
                 if (err.response?.status === 401 && err.response?.data?.requiresAuth) {
                     setState('auth-required')
+                } else if (err.response?.status === 403) {
+                    setState('forbidden')
                 } else if (err.response?.status === 404) {
                     setErrorMsg(err.response?.data?.message ?? 'Share not found.')
                     setState('not-found')
@@ -135,6 +137,28 @@ export default function SharedView() {
                         <Link to={`/login?redirect=/shared/${shareId}`}
                             className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-semibold rounded-xl hover:from-indigo-600 hover:to-violet-700 transition shadow-md shadow-indigo-100">
                             Sign in to view
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (state === 'forbidden') {
+        return (
+            <div className="min-h-screen bg-slate-50">
+                <MinimalHeader />
+                <div className="flex items-center justify-center py-20 px-4">
+                    <div className="max-w-sm w-full text-center">
+                        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-red-50 flex items-center justify-center">
+                            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                            </svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">Access denied</h2>
+                        <p className="text-slate-500 text-sm mb-6">You don't have permission to view this shared content. The owner may have restricted access to specific users.</p>
+                        <Link to="/" className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white font-semibold rounded-xl hover:bg-slate-900 transition">
+                            Go home
                         </Link>
                     </div>
                 </div>

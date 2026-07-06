@@ -9,6 +9,13 @@ interface ShareRecord {
     type: 'Public' | 'Internal'
     ownerName: string
     createdAt: string
+    allowedUserIds: string[]
+}
+
+interface UserOption {
+    id: string
+    name: string
+    email: string
 }
 
 function formatDate(iso: string) {
@@ -17,6 +24,7 @@ function formatDate(iso: string) {
 
 export default function MyShares() {
     const [shares, setShares] = useState<ShareRecord[]>([])
+    const [shareableUsers, setShareableUsers] = useState<UserOption[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [revoking, setRevoking] = useState<string | null>(null)
@@ -28,8 +36,12 @@ export default function MyShares() {
     const load = async () => {
         setLoading(true); setError(null)
         try {
-            const res = await shareService.getMyShares()
-            setShares(res.data)
+            const [sharesRes, usersRes] = await Promise.all([
+                shareService.getMyShares(),
+                shareService.getShareableUsers().catch(() => ({ data: [] }))
+            ])
+            setShares(sharesRes.data)
+            setShareableUsers(usersRes.data)
         } catch { setError('Failed to load shared items.') }
         finally { setLoading(false) }
     }
@@ -57,6 +69,14 @@ export default function MyShares() {
     const filtered = filter === 'All' ? shares : shares.filter(s => s.type === filter)
     const publicCount = shares.filter(s => s.type === 'Public').length
     const internalCount = shares.filter(s => s.type === 'Internal').length
+    const getUserName = (id: string) => shareableUsers.find(u => u.id === id)?.name ?? id
+
+    const accessLabel = (share: ShareRecord) => {
+        if (share.type === 'Public') return null
+        if (share.allowedUserIds.length === 0) return 'All ExStore users'
+        const names = share.allowedUserIds.map(getUserName)
+        return names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2} more`
+    }
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -160,7 +180,14 @@ export default function MyShares() {
                                                     : 'bg-teal-100 text-teal-700'
                                             }`}>{share.type}</span>
                                         </div>
-                                        <p className="text-xs text-slate-400">Created {formatDate(share.createdAt)}</p>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="text-xs text-slate-400">Created {formatDate(share.createdAt)}</p>
+                                            {share.type === 'Internal' && (
+                                                <span className="text-xs text-slate-500">
+                                                    &middot; {accessLabel(share)}
+                                                </span>
+                                            )}
+                                        </div>
 
                                         {/* Link row */}
                                         <div className="flex items-center gap-2 mt-2.5">
