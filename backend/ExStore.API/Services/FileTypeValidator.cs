@@ -20,39 +20,39 @@ public static class FileTypeValidator
             totalRead += n;
         }
 
-        var magic = header.AsSpan(0, totalRead);
-
-        if (IsExecutable(magic))
-            return ("Executable files (PE/ELF binaries) are not allowed.", Stream.Null);
-
-        if (IsScript(magic))
-            return ("Script files are not allowed.", Stream.Null);
-
-        if (IsHtml(magic))
-            return ("HTML files are not allowed.", Stream.Null);
+        // Synchronous validation — avoids Span<T> in async method (CS8652)
+        var error = CheckMagicBytes(header, totalRead);
+        if (error != null)
+            return (error, Stream.Null);
 
         // Reconstruct the stream: prepend the already-read header back onto the body
         var prefix = new MemoryStream(header, 0, totalRead, writable: false);
         return (null, new ConcatenatedStream(prefix, body));
     }
 
-    // Windows PE (MZ) or ELF
-    private static bool IsExecutable(ReadOnlySpan<byte> m) =>
-        (m.Length >= 2 && m[0] == 0x4D && m[1] == 0x5A) ||              // MZ
-        (m.Length >= 4 && m[0] == 0x7F && m[1] == 0x45 &&
-                          m[2] == 0x4C && m[3] == 0x46);                  // ELF
+    private static string? CheckMagicBytes(byte[] m, int len)
+    {
+        if (IsExecutable(m, len)) return "Executable files (PE/ELF binaries) are not allowed.";
+        if (IsScript(m, len))    return "Script files are not allowed.";
+        if (IsHtml(m, len))      return "HTML files are not allowed.";
+        return null;
+    }
 
-    // Unix shebangs (#!), PHP (<?), generic XML PI (<?)
-    private static bool IsScript(ReadOnlySpan<byte> m) =>
-        (m.Length >= 2 && m[0] == 0x23 && m[1] == 0x21) ||              // #!
-        (m.Length >= 5 && m[0] == 0x3C && m[1] == 0x3F &&               // <?php / <?
-            (m[2] == 0x70 || m[2] == 0x50 || m[2] == 0x78 || m[2] == 0x58));
+    // Windows PE (MZ) or ELF binary
+    private static bool IsExecutable(byte[] m, int len) =>
+        (len >= 2 && m[0] == 0x4D && m[1] == 0x5A) ||
+        (len >= 4 && m[0] == 0x7F && m[1] == 0x45 && m[2] == 0x4C && m[3] == 0x46);
+
+    // Unix shebangs (#!) or PHP/server-side scripts (<?)
+    private static bool IsScript(byte[] m, int len) =>
+        (len >= 2 && m[0] == 0x23 && m[1] == 0x21) ||
+        (len >= 2 && m[0] == 0x3C && m[1] == 0x3F);
 
     // HTML / DOCTYPE
-    private static bool IsHtml(ReadOnlySpan<byte> m)
+    private static bool IsHtml(byte[] m, int len)
     {
-        if (m.Length < 5) return false;
-        var s = System.Text.Encoding.ASCII.GetString(m).ToLowerInvariant();
+        if (len < 5) return false;
+        var s = System.Text.Encoding.ASCII.GetString(m, 0, Math.Min(len, 9)).ToLowerInvariant();
         return s.StartsWith("<html", StringComparison.Ordinal) ||
                s.StartsWith("<!doc", StringComparison.Ordinal);
     }
@@ -114,3 +114,4 @@ internal sealed class ConcatenatedStream : Stream
         base.Dispose(disposing);
     }
 }
+
