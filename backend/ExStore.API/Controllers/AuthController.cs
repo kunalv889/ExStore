@@ -3,6 +3,7 @@ using Azure.Storage.Blobs.Models;
 using ExStore.API.Models;
 using ExStore.API.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -29,6 +30,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [EnableRateLimiting("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Email) ||
@@ -38,6 +40,11 @@ public class AuthController : ControllerBase
 
         if (req.Password.Length < 8)
             return BadRequest("Password must be at least 8 characters");
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(req.Password, @"[A-Z]") ||
+            !System.Text.RegularExpressions.Regex.IsMatch(req.Password, @"[0-9]") ||
+            !System.Text.RegularExpressions.Regex.IsMatch(req.Password, @"[^a-zA-Z0-9]"))
+            return BadRequest("Password must contain at least one uppercase letter, one number, and one special character");
 
         var user = new User
         {
@@ -57,6 +64,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))

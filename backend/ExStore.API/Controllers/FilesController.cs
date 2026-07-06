@@ -223,6 +223,11 @@ public class FilesController : ControllerBase
             var blobName = $"{userId}/{pathPrefix}{Guid.NewGuid()}_{originalName}";
             var blobClient = container.GetBlobClient(blobName);
 
+            // --- File type validation (magic bytes) ---
+            var (typeError, validatedStream) = await FileTypeValidator.ValidateAsync(section.Body);
+            if (typeError != null)
+                return BadRequest(new { message = typeError });
+
             // --- Encryption ---
             // Ensure this user has an encryption key (lazy generate for legacy accounts)
             if (string.IsNullOrEmpty(currentUser.EncryptedKey))
@@ -231,7 +236,7 @@ public class FilesController : ControllerBase
                 await _userService.UpdateAsync(currentUser);
             }
             var userKey = _encryption.UnwrapKey(currentUser.EncryptedKey);
-            var (encryptingStream, iv) = _encryption.CreateEncryptingReadStream(section.Body, userKey);
+            var (encryptingStream, iv) = _encryption.CreateEncryptingReadStream(validatedStream, userKey);
 
             await blobClient.UploadAsync(encryptingStream, new BlobUploadOptions
             {
