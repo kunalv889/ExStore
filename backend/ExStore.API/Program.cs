@@ -110,10 +110,14 @@ using (var scope = app.Services.CreateScope())
 // Trust X-Forwarded-Proto / X-Forwarded-For headers set by Azure Container Apps ingress.
 // This ensures Request.Scheme returns "https" when the app sits behind HTTPS termination,
 // which is required for the backend to generate correct https:// proxy download URLs.
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+// KnownNetworks/KnownProxies are cleared so Azure's internal network is trusted.
+var forwardedOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
 
 app.UseCors("AllowFrontend");
 
