@@ -1,7 +1,6 @@
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using Azure.Storage.Sas;
 using ExStore.API.Models;
 using ExStore.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace ExStore.API.Controllers;
 
@@ -21,6 +21,7 @@ public class FilesController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly ILogger<FilesController> _logger;
     private readonly UserService _userService;
+    private readonly EncryptionService _encryption;
 
     private const int MinQuotaGB = 1;
     private const int MaxQuotaGB = 100;
@@ -29,12 +30,14 @@ public class FilesController : ControllerBase
         BlobServiceClient blobServiceClient,
         IConfiguration configuration,
         ILogger<FilesController> logger,
-        UserService userService)
+        UserService userService,
+        EncryptionService encryption)
     {
         _blobServiceClient = blobServiceClient;
         _configuration = configuration;
         _logger = logger;
         _userService = userService;
+        _encryption = encryption;
     }
 
     private string CurrentUserId =>
@@ -78,8 +81,7 @@ public class FilesController : ControllerBase
             page = Math.Max(1, page);
 
             var container = GetContainer();
-            var sasExpiryHours = _configuration.GetValue<int>("Files:SasExpiryHours", 1);
-            var sasExpiry = DateTimeOffset.UtcNow.AddHours(sasExpiryHours);
+            var apiBase = $"{Request.Scheme}://{Request.Host}";
 
             // Build prefix for current "directory" level
             var safePath = SanitizePath(path);
@@ -99,12 +101,10 @@ public class FilesController : ControllerBase
             {
                 if (item.IsPrefix)
                 {
-                    // Virtual sub-directory
                     var dirFullPath = item.Prefix.TrimEnd('/');
-                    var dirName = dirFullPath.Split('/').Last();
                     items.Add(new FileModel
                     {
-                        FileName = dirFullPath, // full internal path
+                        FileName = dirFullPath,
                         ContentType = "directory",
                         IsDirectory = true,
                         UploadedAt = DateTime.UtcNow,
@@ -114,23 +114,18 @@ public class FilesController : ControllerBase
                 else
                 {
                     var blob = item.Blob;
-                    // Skip .keep placeholder files used to anchor empty dirs
                     if (blob.Name.EndsWith("/.keep", StringComparison.OrdinalIgnoreCase)) continue;
 
-                    var blobClient = container.GetBlobClient(blob.Name);
-                    var blobUri = blobClient.CanGenerateSasUri
-                        ? blobClient.GenerateSasUri(BlobSasPermissions.Read, sasExpiry).ToString()
-                        : blobClient.Uri.ToString();
-
-                    var size = blob.Properties.ContentLength ?? 0;
+                    var encodedName = string.Join("/", blob.Name.Split('/').Select(Uri.EscapeDataString));
+                    var proxyUrl = $"{apiBase}/api/files/download/{encodedName}";
 
                     items.Add(new FileModel
                     {
                         FileName = blob.Name,
-                        Size = size,
+                        Size = blob.Properties.ContentLength ?? 0,
                         ContentType = blob.Properties.ContentType ?? string.Empty,
                         UploadedAt = blob.Properties.LastModified?.UtcDateTime ?? DateTime.UtcNow,
-                        BlobUri = blobUri
+                        BlobUri = proxyUrl
                     });
                 }
             }
@@ -228,14 +223,24 @@ public class FilesController : ControllerBase
             var blobName = $"{userId}/{pathPrefix}{Guid.NewGuid()}_{originalName}";
             var blobClient = container.GetBlobClient(blobName);
 
-            await blobClient.UploadAsync(section.Body, new BlobUploadOptions
+            // --- Encryption ---
+            // Ensure this user has an encryption key (lazy generate for legacy accounts)
+            if (string.IsNullOrEmpty(currentUser.EncryptedKey))
+            {
+                currentUser.EncryptedKey = _encryption.WrapKey(_encryption.GenerateKey());
+                await _userService.UpdateAsync(currentUser);
+            }
+            var userKey = _encryption.UnwrapKey(currentUser.EncryptedKey);
+            var (encryptingStream, iv) = _encryption.CreateEncryptingReadStream(section.Body, userKey);
+
+            await blobClient.UploadAsync(encryptingStream, new BlobUploadOptions
             {
                 HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
-                TransferOptions = new StorageTransferOptions
+                Metadata = new Dictionary<string, string>
                 {
-                    MaximumConcurrency = 4,
-                    MaximumTransferSize = 8 * 1024 * 1024
-                }
+                    [EncryptionService.IvMetadataKey] = Convert.ToHexString(iv)
+                },
+                TransferOptions = new StorageTransferOptions { MaximumConcurrency = 1 }
             });
 
             var props = await blobClient.GetPropertiesAsync();
@@ -249,6 +254,107 @@ public class FilesController : ControllerBase
         }
 
         return BadRequest("No file found in request");
+    }
+
+    /// <summary>
+    /// Download and decrypt a file.
+    /// Accepts either: JWT in Authorization header (owner access) OR ?shareId= (share-based access).
+    /// Backward compatible: files without an IV in metadata are served as-is (legacy unencrypted files).
+    /// </summary>
+    [HttpGet("download/{*blobName}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DownloadFile(string blobName)
+    {
+        var container = GetContainer();
+        var blobClient = container.GetBlobClient(blobName);
+
+        if (!await blobClient.ExistsAsync())
+            return NotFound();
+
+        // --- Authorize access ---
+        string? ownerUserId = null;
+
+        var shareId = Request.Query["shareId"].FirstOrDefault();
+        var jwtUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!string.IsNullOrEmpty(shareId))
+        {
+            // Share-based access — validate the share and that the blob is within it
+            var authContainer = _blobServiceClient.GetBlobContainerClient(
+                _configuration["Auth:UsersContainer"] ?? "exstore-auth");
+            var sharesBlob = authContainer.GetBlobClient("shares.json");
+
+            if (!await sharesBlob.ExistsAsync()) return Forbid();
+
+            var download = await sharesBlob.DownloadContentAsync();
+            var shares = System.Text.Json.JsonSerializer.Deserialize<List<ShareRecord>>(
+                download.Value.Content,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+            var share = shares.FirstOrDefault(s => s.Id == shareId);
+            if (share == null) return Forbid();
+
+            // Blob must be within the share's scope
+            var shareBlobPrefix = share.IsDirectory
+                ? share.BlobName.TrimEnd('/') + "/"
+                : share.BlobName;
+            if (!blobName.StartsWith(shareBlobPrefix, StringComparison.Ordinal) && blobName != share.BlobName)
+                return Forbid();
+
+            // Internal shares require auth + allowed-user check
+            if (share.Type == "Internal")
+            {
+                if (string.IsNullOrEmpty(jwtUserId)) return Unauthorized();
+                if (share.AllowedUserIds.Count > 0 && !share.AllowedUserIds.Contains(jwtUserId))
+                    return StatusCode(403, "You don't have permission to view this content.");
+            }
+
+            ownerUserId = share.OwnerId;
+        }
+        else if (!string.IsNullOrEmpty(jwtUserId))
+        {
+            // JWT-based access — user must own the blob (first path segment = userId)
+            var ownerId = blobName.Split('/')[0];
+            if (ownerId != jwtUserId) return Forbid();
+            ownerUserId = jwtUserId;
+        }
+        else
+        {
+            return Unauthorized();
+        }
+
+        // --- Get owner's encryption key ---
+        var owner = await _userService.GetByIdAsync(ownerUserId!);
+        if (owner == null) return NotFound();
+
+        // --- Stream the blob (decrypting if encrypted) ---
+        var props = await blobClient.GetPropertiesAsync();
+        var contentType = props.Value.ContentType ?? "application/octet-stream";
+
+        // Extract original filename for Content-Disposition
+        var rawFileName = blobName.Split('/').Last();
+        var underscoreIdx = rawFileName.IndexOf('_');
+        if (underscoreIdx > 0 && Guid.TryParse(rawFileName[..underscoreIdx], out _))
+            rawFileName = rawFileName[(underscoreIdx + 1)..];
+        var safeFileName = Uri.EscapeDataString(rawFileName);
+
+        var blobDownload = await blobClient.DownloadStreamingAsync();
+        Stream contentStream = blobDownload.Value.Content;
+
+        // Decrypt if this blob was encrypted (has IV in metadata)
+        if (props.Value.Metadata.TryGetValue(EncryptionService.IvMetadataKey, out var ivHex)
+            && !string.IsNullOrEmpty(ivHex)
+            && !string.IsNullOrEmpty(owner.EncryptedKey))
+        {
+            var userKey = _encryption.UnwrapKey(owner.EncryptedKey);
+            var iv = Convert.FromHexString(ivHex);
+            contentStream = _encryption.CreateDecryptingReadStream(contentStream, userKey, iv);
+        }
+
+        Response.Headers.Append("Cache-Control", "private, max-age=3600");
+        Response.Headers.Append("Content-Disposition", $"inline; filename*=UTF-8''{safeFileName}");
+
+        return File(contentStream, contentType, enableRangeProcessing: false);
     }
 
     [HttpDelete("{*blobName}")]

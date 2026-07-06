@@ -18,12 +18,14 @@ public class AuthController : ControllerBase
     private readonly UserService _users;
     private readonly IConfiguration _config;
     private readonly BlobServiceClient _blobServiceClient;
+    private readonly EncryptionService _encryption;
 
-    public AuthController(UserService users, IConfiguration config, BlobServiceClient blobServiceClient)
+    public AuthController(UserService users, IConfiguration config, BlobServiceClient blobServiceClient, EncryptionService encryption)
     {
         _users = users;
         _config = config;
         _blobServiceClient = blobServiceClient;
+        _encryption = encryption;
     }
 
     [HttpPost("register")]
@@ -43,7 +45,8 @@ public class AuthController : ControllerBase
             Name = req.Name.Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Role = UserRole.User,
-            IsApproved = false
+            IsApproved = false,
+            EncryptedKey = _encryption.WrapKey(_encryption.GenerateKey())
         };
 
         var created = await _users.CreateAsync(user);

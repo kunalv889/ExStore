@@ -1,5 +1,4 @@
 using Azure.Storage.Blobs;
-using Azure.Storage.Sas;
 using ExStore.API.Models;
 using ExStore.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -188,7 +187,7 @@ public class SharesController : ControllerBase
         }
 
         var container = GetFilesContainer();
-        var sasExpiry = DateTimeOffset.UtcNow.AddHours(2);
+        var apiBase = $"{Request.Scheme}://{Request.Host}";
 
         if (share.IsDirectory)
         {
@@ -212,17 +211,15 @@ public class SharesController : ControllerBase
                 {
                     var blob = item.Blob;
                     if (blob.Name.EndsWith("/.keep", StringComparison.OrdinalIgnoreCase)) continue;
-                    var blobClient = container.GetBlobClient(blob.Name);
-                    var blobUri = blobClient.CanGenerateSasUri
-                        ? blobClient.GenerateSasUri(BlobSasPermissions.Read, sasExpiry).ToString()
-                        : blobClient.Uri.ToString();
+                    var encodedName = string.Join("/", blob.Name.Split('/').Select(Uri.EscapeDataString));
+                    var proxyUrl = $"{apiBase}/api/files/download/{encodedName}?shareId={shareId}";
                     items.Add(new FileModel
                     {
                         FileName = blob.Name,
                         Size = blob.Properties.ContentLength ?? 0,
                         ContentType = blob.Properties.ContentType ?? string.Empty,
                         UploadedAt = blob.Properties.LastModified?.UtcDateTime ?? DateTime.UtcNow,
-                        BlobUri = blobUri
+                        BlobUri = proxyUrl
                     });
                 }
             }
@@ -240,17 +237,16 @@ public class SharesController : ControllerBase
             if (!await blobClient.ExistsAsync())
                 return NotFound(new { message = "The shared file no longer exists." });
 
-            var blobUri = blobClient.CanGenerateSasUri
-                ? blobClient.GenerateSasUri(BlobSasPermissions.Read, sasExpiry).ToString()
-                : blobClient.Uri.ToString();
-
             var props = await blobClient.GetPropertiesAsync();
+            var encodedName = string.Join("/", share.BlobName.Split('/').Select(Uri.EscapeDataString));
+            var proxyUrl = $"{apiBase}/api/files/download/{encodedName}?shareId={shareId}";
+
             var item = new FileModel
             {
                 FileName = share.BlobName,
                 Size = props.Value.ContentLength,
                 ContentType = props.Value.ContentType,
-                BlobUri = blobUri
+                BlobUri = proxyUrl
             };
             return Ok(new { share = ShareSummary(share), items = new[] { item } });
         }

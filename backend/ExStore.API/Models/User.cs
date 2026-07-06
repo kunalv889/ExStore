@@ -17,4 +17,9 @@ public class User
     public bool IsUploadLocked { get; set; } = false;
     /// <summary>Blob name (relative) of the user's profile picture, or null if none.</summary>
     public string? AvatarBlobName { get; set; }
+    /// <summary>
+    /// Per-user AES-256 encryption key, wrapped (encrypted) with the application master key.
+    /// Null for accounts created before encryption was enabled; a key will be lazily generated on first use.
+    /// </summary>
+    public string? EncryptedKey { get; set; }
 }

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fileService } from '../services/api'
 import ShareModal from '../components/ShareModal'
+import SecureImage from '../components/SecureImage'
+import { useAuth } from '../contexts/AuthContext'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
@@ -58,9 +60,12 @@ function isZip(contentType: string, fileName: string) {
         /\.(zip|rar)$/i.test(fileName)
 }
 
-async function triggerDownload(file: FileItem) {
+async function triggerDownload(file: FileItem, token: string | null) {
     try {
-        const response = await fetch(file.blobUri)
+        const headers: Record<string, string> = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        const response = await fetch(file.blobUri, { headers, credentials: 'omit' })
+        if (!response.ok) throw new Error(`${response.status}`)
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -71,11 +76,11 @@ async function triggerDownload(file: FileItem) {
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
     } catch {
-        window.open(file.blobUri, '_blank')
-    }
+        /* silently fail */ }
 }
 
 export default function Home() {
+    const { token } = useAuth()
     const [currentPath, setCurrentPath] = useState<string>('')
     const [result, setResult] = useState<PagedResult | null>(null)
     const [page, setPage] = useState(1)
@@ -143,14 +148,13 @@ export default function Home() {
 
     const handleCardClick = (file: FileItem, imgIdx: number) => {
         if (file.isDirectory) {
-            // Strip the userId prefix to get just the relative path
             const relativePath = file.fileName.split('/').slice(1).join('/')
             navigateTo(relativePath)
             return
         }
         if (selectMode) { toggleSelect(file.fileName); return }
         if (isImage(file.contentType, file.fileName)) setLightboxIndex(imgIdx)
-        else window.open(file.blobUri, '_blank')
+        else triggerDownload(file, token)
     }
 
     const toggleSelect = (name: string) =>
@@ -184,7 +188,7 @@ export default function Home() {
         if (!result || selected.size === 0) return
         setDownloading(true)
         const files = result.items.filter(f => selected.has(f.fileName) && !f.isDirectory)
-        for (const file of files) { await triggerDownload(file); await new Promise(r => setTimeout(r, 400)) }
+        for (const file of files) { await triggerDownload(file, token); await new Promise(r => setTimeout(r, 400)) }
         setDownloading(false)
     }
 
@@ -571,8 +575,8 @@ export default function Home() {
                                                 </svg>
                                             </div>
                                         ) : isImage(file.contentType, file.fileName) ? (
-                                            <img src={file.blobUri} alt={name}
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                                            <SecureImage src={file.blobUri} alt={name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                         ) : isVideo(file.contentType, file.fileName) ? (
                                             <div className="text-center">
                                                 <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center mb-1">
@@ -637,9 +641,10 @@ export default function Home() {
                         <button onClick={e => { e.stopPropagation(); setLightboxIndex(i => i! - 1) }}
                             className="absolute left-4 text-white text-5xl hover:text-gray-300 z-10 select-none px-2">‹</button>
                     )}
-                    <img src={currentLightboxImage.blobUri} alt={displayName(currentLightboxImage.fileName)}
-                        className="max-w-[90vw] max-h-[85vh] object-contain rounded shadow-2xl"
-                        onClick={e => e.stopPropagation()} />
+                    <div onClick={e => e.stopPropagation()}>
+                        <SecureImage src={currentLightboxImage.blobUri} alt={displayName(currentLightboxImage.fileName)}
+                            className="max-w-[90vw] max-h-[85vh] object-contain rounded shadow-2xl" />
+                    </div>
                     {lightboxIndex! < imageItems.length - 1 && (
                         <button onClick={e => { e.stopPropagation(); setLightboxIndex(i => i! + 1) }}
                             className="absolute right-4 text-white text-5xl hover:text-gray-300 z-10 select-none px-2">›</button>

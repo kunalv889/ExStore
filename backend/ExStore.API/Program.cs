@@ -69,6 +69,9 @@ else
 // User service (blob-backed user store)
 builder.Services.AddScoped<UserService>();
 
+// Encryption service (per-user AES-256 key management)
+builder.Services.AddSingleton<ExStore.API.Services.EncryptionService>();
+
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? throw new InvalidOperationException("Jwt:Secret must be configured");

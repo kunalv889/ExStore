@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { shareService } from '../services/api'
+import SecureImage from '../components/SecureImage'
+import { useAuth } from '../contexts/AuthContext'
 
 interface FileItem {
     fileName: string
@@ -45,9 +47,12 @@ function displayName(fileName: string) {
     return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
 }
 
-async function triggerDownload(url: string, name: string) {
+async function triggerDownload(url: string, name: string, token: string | null) {
     try {
-        const res = await fetch(url)
+        const headers: Record<string, string> = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        const res = await fetch(url, { headers, credentials: 'omit' })
+        if (!res.ok) throw new Error()
         const blob = await res.blob()
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
@@ -56,11 +61,12 @@ async function triggerDownload(url: string, name: string) {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(a.href)
-    } catch { window.open(url, '_blank') }
+    } catch { /* silently fail */ }
 }
 
 export default function SharedView() {
     const { shareId } = useParams<{ shareId: string }>()
+    const { token } = useAuth()
     const [state, setState] = useState<PageState>('loading')
     const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null)
     const [items, setItems] = useState<FileItem[]>([])
@@ -229,14 +235,28 @@ export default function SharedView() {
                     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                         {isImage(singleFile.contentType, singleFile.fileName) && (
                             <div className="flex items-center justify-center bg-slate-900 max-h-[70vh] overflow-hidden">
-                                <img src={singleFile.blobUri}
+                                <SecureImage src={singleFile.blobUri}
                                     alt={displayName(singleFile.fileName)}
                                     className="max-h-[70vh] max-w-full object-contain" />
                             </div>
                         )}
                         {isVideo(singleFile.contentType, singleFile.fileName) && (
-                            <div className="flex items-center justify-center bg-black">
-                                <video controls className="max-h-[70vh] max-w-full" src={singleFile.blobUri} />
+                            <div className="flex items-center justify-center bg-slate-900 py-16">
+                                <div className="text-center">
+                                    <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-violet-600/20 flex items-center justify-center">
+                                        <svg className="w-10 h-10 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-white/70 text-sm mb-4">Encrypted video — download to play</p>
+                                    <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token)}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl transition mx-auto">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                        </svg>
+                                        Download Video
+                                    </button>
+                                </div>
                             </div>
                         )}
                         <div className="px-5 py-4 flex items-center justify-between gap-4">
@@ -246,7 +266,7 @@ export default function SharedView() {
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">{formatBytes(singleFile.size)}</p>
                             </div>
-                            <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)))}
+                            <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token)}
                                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:from-indigo-600 hover:to-violet-700 transition shadow-sm">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -270,8 +290,7 @@ export default function SharedView() {
 
                                 return (
                                     <div key={i}
-                                        onClick={() => imgIdx >= 0 ? setLightboxIdx(imgIdx) : triggerDownload(file.blobUri, name)}
-                                        className="group bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
+                                        onClick={() => imgIdx >= 0 ? setLightboxIdx(imgIdx) : triggerDownload(file.blobUri, name, token)}                                        className="group bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
                                         <div className="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
                                             {file.isDirectory ? (
                                                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
@@ -280,9 +299,8 @@ export default function SharedView() {
                                                     </svg>
                                                 </div>
                                             ) : isImage(file.contentType, file.fileName) ? (
-                                                <img src={file.blobUri} alt={name}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                    loading="lazy" />
+                                                <SecureImage src={file.blobUri} alt={name}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                             ) : isVideo(file.contentType, file.fileName) ? (
                                                 <div className="text-center">
                                                     <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center mb-1">
@@ -331,16 +349,17 @@ export default function SharedView() {
                         <button onClick={e => { e.stopPropagation(); setLightboxIdx(i => i! - 1) }}
                             className="absolute left-4 text-white text-5xl hover:text-gray-300 z-10 select-none px-2">‹</button>
                     )}
-                    <img src={currentLightbox.blobUri}
-                        alt={displayName(currentLightbox.fileName)}
-                        className="max-w-[90vw] max-h-[85vh] object-contain rounded shadow-2xl"
-                        onClick={e => e.stopPropagation()} />
+                    <div onClick={e => e.stopPropagation()}>
+                        <SecureImage src={currentLightbox.blobUri}
+                            alt={displayName(currentLightbox.fileName)}
+                            className="max-w-[90vw] max-h-[85vh] object-contain rounded shadow-2xl" />
+                    </div>
                     {lightboxIdx! < imageItems.length - 1 && (
                         <button onClick={e => { e.stopPropagation(); setLightboxIdx(i => i! + 1) }}
                             className="absolute right-4 text-white text-5xl hover:text-gray-300 z-10 select-none px-2">›</button>
                     )}
                     <button
-                        onClick={e => { e.stopPropagation(); triggerDownload(currentLightbox.blobUri, lastName(displayName(currentLightbox.fileName))) }}
+                        onClick={e => { e.stopPropagation(); triggerDownload(currentLightbox.blobUri, lastName(displayName(currentLightbox.fileName)), token) }}
                         className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl transition z-10">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
