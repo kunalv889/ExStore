@@ -2,6 +2,8 @@ namespace ExStore.API.Models;
 
 public record LoginRequest(string Email, string Password);
 public record RegisterRequest(string Email, string Name, string Password);
+public record UpdateProfileRequest(string Name);
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 /// <summary>Admin-only: update per-user storage quota and upload lock.</summary>
 public record UserSettingsRequest(
@@ -19,4 +21,5 @@ public class UserDto
     public DateTime CreatedAt { get; set; }
     public int StorageQuotaGB { get; set; }
     public bool IsUploadLocked { get; set; }
+    public bool HasAvatar { get; set; }
 }

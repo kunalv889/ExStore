@@ -15,4 +15,6 @@ public class User
     public int StorageQuotaGB { get; set; } = 5;
     /// <summary>When true the user cannot upload new files.</summary>
     public bool IsUploadLocked { get; set; } = false;
+    /// <summary>Blob name (relative) of the user's profile picture, or null if none.</summary>
+    public string? AvatarBlobName { get; set; }
 }

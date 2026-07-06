@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { profileService } from '../services/api'
 
 export default function Navigation() {
     const { user, isAuthenticated, isAdmin, logout } = useAuth()
@@ -39,11 +40,25 @@ export default function Navigation() {
                     )}
 
                         <div className="flex items-center gap-2 ml-2 pl-3 border-l border-slate-200">
-                            {/* Avatar */}
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center ring-2 ring-white shadow-sm shrink-0">
-                                <span className="text-white text-xs font-bold">{initials}</span>
-                            </div>
-                            <span className="text-sm font-medium text-slate-700 hidden sm:block max-w-[140px] truncate">{user?.name}</span>
+                            {/* Avatar — click to go to profile */}
+                            <Link to="/profile" className="shrink-0 focus:outline-none" title="Profile settings">
+                                <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-white shadow-sm hover:ring-indigo-300 transition">
+                                    {user?.hasAvatar ? (
+                                        <img
+                                            src={profileService.avatarUrl(user.id)}
+                                            alt="Avatar"
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center">
+                                            <span className="text-white text-xs font-bold">{initials}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </Link>
+                            <Link to="/profile" className="text-sm font-medium text-slate-700 hover:text-indigo-600 hidden sm:block max-w-[140px] truncate transition">
+                                {user?.name}
+                            </Link>
                             <button
                                 onClick={() => { logout(); navigate('/login') }}
                                 className="text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg transition-all">

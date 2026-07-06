@@ -6,6 +6,7 @@ export interface AuthUser {
     name: string
     role: 'Admin' | 'User'
     isApproved: boolean
+    hasAvatar?: boolean
 }
 
 interface AuthContextType {
@@ -13,6 +14,7 @@ interface AuthContextType {
     token: string | null
     login: (token: string, user: AuthUser) => void
     logout: () => void
+    updateUser: (user: AuthUser) => void
     isAuthenticated: boolean
     isAdmin: boolean
 }
@@ -52,10 +54,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
     }
 
+    const updateUser = (newUser: AuthUser) => {
+        localStorage.setItem('auth_user', JSON.stringify(newUser))
+        setUser(newUser)
+    }
+
     return (
         <AuthContext.Provider value={{
             user, token,
-            login, logout,
+            login, logout, updateUser,
             isAuthenticated: !!token && !!user,
             isAdmin: user?.role === 'Admin'
         }}>

@@ -7,6 +7,7 @@ import PendingApproval from './pages/PendingApproval'
 import Admin from './pages/Admin'
 import MyShares from './pages/MyShares'
 import SharedView from './pages/SharedView'
+import Profile from './pages/Profile'
 import Navigation from './components/Navigation'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
@@ -29,6 +30,7 @@ function AppRoutes() {
                 {/* Protected routes */}
                 <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
                 <Route path="/shares" element={<ProtectedRoute><MyShares /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
                 {/* Public share viewer — no auth wrapper (handles auth internally) */}
                 <Route path="/shared/:shareId" element={<SharedView />} />

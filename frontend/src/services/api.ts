@@ -83,6 +83,20 @@ publicApi.interceptors.request.use(config => {
     return config
 })
 
+export const profileService = {
+    updateProfile: (name: string) =>
+        api.put('/auth/profile', { name }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+        api.put('/auth/password', { currentPassword, newPassword }),
+    uploadAvatar: (file: File) => {
+        const form = new FormData()
+        form.append('file', file)
+        return api.post('/auth/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
+    deleteAvatar: () => api.delete('/auth/avatar'),
+    avatarUrl: (userId: string) => `${API_BASE_URL}/api/auth/avatar/${userId}`,
+}
+
 export const shareService = {
     /** All shares owned by the current user. Pass blobName to filter. */
     getMyShares: (blobName?: string) =>
