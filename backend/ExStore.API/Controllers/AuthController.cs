@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace ExStore.API.Controllers;
@@ -20,13 +21,15 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly BlobServiceClient _blobServiceClient;
     private readonly EncryptionService _encryption;
+    private readonly IEmailService _email;
 
-    public AuthController(UserService users, IConfiguration config, BlobServiceClient blobServiceClient, EncryptionService encryption)
+    public AuthController(UserService users, IConfiguration config, BlobServiceClient blobServiceClient, EncryptionService encryption, IEmailService email)
     {
         _users = users;
         _config = config;
         _blobServiceClient = blobServiceClient;
         _encryption = encryption;
+        _email = email;
     }
 
     [HttpPost("register")]
@@ -53,6 +56,9 @@ public class AuthController : ControllerBase
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Role = UserRole.User,
             IsApproved = false,
+            IsEmailVerified = false,
+            EmailVerificationToken = GenerateVerificationToken(),
+            EmailVerificationExpiry = DateTime.UtcNow.AddHours(24),
             EncryptedKey = _encryption.WrapKey(_encryption.GenerateKey())
         };
 
@@ -60,7 +66,10 @@ public class AuthController : ControllerBase
         if (!created)
             return Conflict("An account with this email already exists");
 
-        return Ok(new { message = "Registration successful. Awaiting admin approval before you can sign in." });
+        var verifyUrl = BuildVerifyUrl(user.EmailVerificationToken!);
+        await _email.SendVerificationEmailAsync(user.Email, user.Name, verifyUrl);
+
+        return Ok(new { message = "Registration successful. Please check your email to verify your address before signing in." });
     }
 
     [HttpPost("login")]
@@ -75,6 +84,19 @@ public class AuthController : ControllerBase
         if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { message = "Invalid email or password" });
 
+        if (!user.IsEmailVerified)
+        {
+            // If token expired, generate a fresh one and resend
+            if (user.EmailVerificationExpiry < DateTime.UtcNow)
+            {
+                user.EmailVerificationToken = GenerateVerificationToken();
+                user.EmailVerificationExpiry = DateTime.UtcNow.AddHours(24);
+                await _users.UpdateAsync(user);
+                await _email.SendVerificationEmailAsync(user.Email, user.Name, BuildVerifyUrl(user.EmailVerificationToken!));
+            }
+            return StatusCode(403, new { message = "Please verify your email address. Check your inbox for a verification link.", status = "email_unverified" });
+        }
+
         if (!user.IsApproved)
             return StatusCode(403, new { message = "Your account is pending admin approval.", status = "pending" });
 
@@ -88,6 +110,50 @@ public class AuthController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var user = await _users.GetByIdAsync(userId!);
         return user is null ? NotFound() : Ok(ToDto(user));
+    }
+
+    /// <summary>Verify email address via token from the verification link.</summary>
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Token))
+            return BadRequest(new { status = "invalid" });
+
+        var user = await _users.GetByVerificationTokenAsync(req.Token);
+
+        if (user == null)
+            return BadRequest(new { status = "invalid", message = "Invalid or already used verification link." });
+
+        if (user.EmailVerificationExpiry < DateTime.UtcNow)
+            return BadRequest(new { status = "expired", message = "This verification link has expired. Please request a new one." });
+
+        user.IsEmailVerified = true;
+        user.EmailVerificationToken = null;
+        user.EmailVerificationExpiry = null;
+        await _users.UpdateAsync(user);
+
+        return Ok(new { status = "success", message = "Email verified successfully. Your account is now awaiting admin approval." });
+    }
+
+    /// <summary>Resend a verification email (rate-limited by the login limiter).</summary>
+    [HttpPost("resend-verification")]
+    [AllowAnonymous]
+    [EnableRateLimiting("login")]
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
+    {
+        // Always return 200 to avoid user enumeration
+        var user = await _users.GetByEmailAsync(req.Email.Trim().ToLower());
+
+        if (user != null && !user.IsEmailVerified)
+        {
+            user.EmailVerificationToken = GenerateVerificationToken();
+            user.EmailVerificationExpiry = DateTime.UtcNow.AddHours(24);
+            await _users.UpdateAsync(user);
+            await _email.SendVerificationEmailAsync(user.Email, user.Name, BuildVerifyUrl(user.EmailVerificationToken!));
+        }
+
+        return Ok(new { message = "If your account exists and is unverified, a new verification email has been sent." });
     }
 
     [HttpPut("profile")]
@@ -281,9 +347,20 @@ public class AuthController : ControllerBase
         Name = u.Name,
         Role = u.Role.ToString(),
         IsApproved = u.IsApproved,
+        IsEmailVerified = u.IsEmailVerified,
         CreatedAt = u.CreatedAt,
         StorageQuotaGB = u.StorageQuotaGB,
         IsUploadLocked = u.IsUploadLocked,
         HasAvatar = !string.IsNullOrEmpty(u.AvatarBlobName)
     };
+
+    private static string GenerateVerificationToken() =>
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+    private string BuildVerifyUrl(string token)
+    {
+        var baseUrl = (_config["Frontend:BaseUrl"] ?? "https://exstore.kunalverma.site").TrimEnd('/');
+        return $"{baseUrl}/verify-email?token={Uri.EscapeDataString(token)}";
+    }
 }

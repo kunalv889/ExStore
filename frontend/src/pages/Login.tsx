@@ -42,6 +42,8 @@ export default function Login() {
             const data = err.response?.data
             if (err.response?.status === 403 && data?.status === 'pending') {
                 navigate('/pending-approval')
+            } else if (err.response?.status === 403 && data?.status === 'email_unverified') {
+                navigate(`/pending-verification?email=${encodeURIComponent(email.trim())}`)
             } else {
                 setError(data?.message ?? 'Login failed. Please try again.')
             }
