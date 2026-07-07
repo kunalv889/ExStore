@@ -147,12 +147,12 @@ export default function Home() {
     }
 
     const handleCardClick = (file: FileItem, imgIdx: number) => {
+        if (selectMode) { toggleSelect(file.fileName); return }
         if (file.isDirectory) {
             const relativePath = file.fileName.split('/').slice(1).join('/')
             navigateTo(relativePath)
             return
         }
-        if (selectMode) { toggleSelect(file.fileName); return }
         if (isImage(file.contentType, file.fileName)) setLightboxIndex(imgIdx)
         else triggerDownload(file, token)
     }
