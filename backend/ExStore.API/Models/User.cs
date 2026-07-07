@@ -10,6 +10,9 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; } = UserRole.User;
     public bool IsApproved { get; set; } = false;
+    public bool IsEmailVerified { get; set; } = false;
+    public string? EmailVerificationToken { get; set; }
+    public DateTime? EmailVerificationExpiry { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     /// <summary>Per-user storage quota in GB (default 5, min 1, max 100).</summary>
     public int StorageQuotaGB { get; set; } = 5;

@@ -34,6 +34,10 @@ export const authService = {
     register: (name: string, email: string, password: string) =>
         api.post('/auth/register', { name, email, password }),
     me: () => api.get('/auth/me'),
+    verifyEmail: (token: string) =>
+        publicApi.post('/auth/verify-email', { token }),
+    resendVerification: (email: string) =>
+        publicApi.post('/auth/resend-verification', { email }),
 }
 
 export const fileService = {

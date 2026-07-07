@@ -4,6 +4,8 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import PendingApproval from './pages/PendingApproval'
+import PendingVerification from './pages/PendingVerification'
+import VerifyEmail from './pages/VerifyEmail'
 import Admin from './pages/Admin'
 import MyShares from './pages/MyShares'
 import SharedView from './pages/SharedView'
@@ -26,6 +28,8 @@ function AppRoutes() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/pending-approval" element={<PendingApproval />} />
+                <Route path="/pending-verification" element={<PendingVerification />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
 
                 {/* Protected routes */}
                 <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
