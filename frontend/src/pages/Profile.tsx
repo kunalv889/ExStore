@@ -276,7 +276,24 @@ export default function Profile() {
                 <div className="mt-5 pt-5 border-t border-slate-100">
                     <label className="block text-sm font-medium text-slate-500 mb-1.5">Email address</label>
                     <p className="text-sm text-slate-700 bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-200">{user.email}</p>
-                    <p className="text-xs text-slate-400 mt-1">Email cannot be changed</p>
+                    <div className="flex items-center gap-3 mt-1.5">
+                        {user.isEmailVerified ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Verified
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                                Not verified
+                            </span>
+                        )}
+                        <p className="text-xs text-slate-400">Email cannot be changed</p>
+                    </div>
                 </div>
             </section>
 

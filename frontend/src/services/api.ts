@@ -68,6 +68,8 @@ export const adminService = {
     revokeUser: (id: string) => api.post(`/admin/users/${id}/revoke`),
     updateUserSettings: (id: string, storageQuotaGB: number, isUploadLocked: boolean) =>
         api.put(`/admin/users/${id}/settings`, { storageQuotaGB, isUploadLocked }),
+    resetEmailVerification: (id: string) => api.post(`/admin/users/${id}/reset-email-verification`),
+    deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
 }
 
 export const galleryService = {

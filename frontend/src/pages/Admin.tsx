@@ -7,6 +7,7 @@ interface UserRecord {
     name: string
     role: string
     isApproved: boolean
+    isEmailVerified: boolean
     createdAt: string
     storageQuotaGB: number
     isUploadLocked: boolean
@@ -43,6 +44,20 @@ function UserRow({ user, onRefresh }: { user: UserRecord; onRefresh: () => void 
         catch { setMsg('Failed') } finally { setActionLoading(null) }
     }
 
+    const resetVerification = async () => {
+        if (!confirm(`Reset email verification for ${user.name}? They will receive a new verification email.`)) return
+        setActionLoading('resetVerify')
+        try { await adminService.resetEmailVerification(user.id); onRefresh() }
+        catch { setMsg('Failed') } finally { setActionLoading(null) }
+    }
+
+    const deleteUser = async () => {
+        if (!confirm(`Permanently delete ${user.name}'s account and all their files? This cannot be undone.`)) return
+        setActionLoading('delete')
+        try { await adminService.deleteUser(user.id); onRefresh() }
+        catch { setMsg('Failed') } finally { setActionLoading(null) }
+    }
+
     return (
         <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
             {/* Identity */}
@@ -61,6 +76,9 @@ function UserRow({ user, onRefresh }: { user: UserRecord; onRefresh: () => void 
                         )}
                         {!user.isApproved && user.role !== 'Admin' && (
                             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pending</span>
+                        )}
+                        {!user.isEmailVerified && (
+                            <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">Unverified</span>
                         )}
                     </p>
                     <p className="text-sm text-slate-400 truncate">{user.email}</p>
@@ -118,6 +136,22 @@ function UserRow({ user, onRefresh }: { user: UserRecord; onRefresh: () => void 
                     <button onClick={revoke} disabled={!!actionLoading}
                         className="px-3 py-1.5 text-xs font-semibold bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-50 transition shadow-sm">
                         {actionLoading === 'revoke' ? '…' : 'Revoke'}
+                    </button>
+                )}
+
+                {/* Reset email verification — only for non-admins that are already verified */}
+                {user.role !== 'Admin' && user.isEmailVerified && (
+                    <button onClick={resetVerification} disabled={!!actionLoading}
+                        className="px-3 py-1.5 text-xs font-semibold bg-orange-500 text-white rounded-xl hover:bg-orange-600 disabled:opacity-50 transition shadow-sm">
+                        {actionLoading === 'resetVerify' ? '…' : 'Reset Email'}
+                    </button>
+                )}
+
+                {/* Delete user — not for admins */}
+                {user.role !== 'Admin' && (
+                    <button onClick={deleteUser} disabled={!!actionLoading}
+                        className="px-3 py-1.5 text-xs font-semibold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 transition shadow-sm">
+                        {actionLoading === 'delete' ? '…' : 'Delete'}
                     </button>
                 )}
 
