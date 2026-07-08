@@ -32,6 +32,9 @@ public class UserService
     public async Task<User?> GetByIdAsync(string id) =>
         (await GetAllAsync()).FirstOrDefault(u => u.Id == id);
 
+    public async Task<User?> GetByVerificationTokenAsync(string token) =>
+        (await GetAllAsync()).FirstOrDefault(u => u.EmailVerificationToken == token);
+
     /// <summary>Returns false if email is already taken.</summary>
     public async Task<bool> CreateAsync(User user)
     {
@@ -68,7 +71,8 @@ public class UserService
             Name = "Admin",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Role = UserRole.Admin,
-            IsApproved = true
+            IsApproved = true,
+            IsEmailVerified = true   // admin bypasses email verification
         });
     }
 

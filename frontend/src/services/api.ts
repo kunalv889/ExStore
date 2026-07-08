@@ -34,6 +34,10 @@ export const authService = {
     register: (name: string, email: string, password: string) =>
         api.post('/auth/register', { name, email, password }),
     me: () => api.get('/auth/me'),
+    verifyEmail: (token: string) =>
+        publicApi.post('/auth/verify-email', { token }),
+    resendVerification: (email: string) =>
+        publicApi.post('/auth/resend-verification', { email }),
 }
 
 export const fileService = {
@@ -64,6 +68,8 @@ export const adminService = {
     revokeUser: (id: string) => api.post(`/admin/users/${id}/revoke`),
     updateUserSettings: (id: string, storageQuotaGB: number, isUploadLocked: boolean) =>
         api.put(`/admin/users/${id}/settings`, { storageQuotaGB, isUploadLocked }),
+    resetEmailVerification: (id: string) => api.post(`/admin/users/${id}/reset-email-verification`),
+    deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
 }
 
 export const galleryService = {

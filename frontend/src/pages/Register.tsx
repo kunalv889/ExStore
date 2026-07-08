@@ -26,7 +26,7 @@ export default function Register() {
         setLoading(true)
         try {
             await authService.register(name.trim(), email.trim(), password)
-            navigate('/pending-approval')
+            navigate(`/pending-verification?email=${encodeURIComponent(email.trim())}`)
         } catch (err: any) {
             setError(err.response?.data ?? err.response?.data?.message ?? 'Registration failed. Please try again.')
         } finally {

@@ -6,6 +6,7 @@ export interface AuthUser {
     name: string
     role: 'Admin' | 'User'
     isApproved: boolean
+    isEmailVerified: boolean
     hasAvatar?: boolean
 }
 
