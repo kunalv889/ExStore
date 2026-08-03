@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -278,56 +279,8 @@ public class FilesController : ControllerBase
             return NotFound();
 
         // --- Authorize access ---
-        string? ownerUserId = null;
-
-        var shareId = Request.Query["shareId"].FirstOrDefault();
-        var jwtUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (!string.IsNullOrEmpty(shareId))
-        {
-            // Share-based access — validate the share and that the blob is within it
-            var authContainer = _blobServiceClient.GetBlobContainerClient(
-                _configuration["Auth:UsersContainer"] ?? "exstore-auth");
-            var sharesBlob = authContainer.GetBlobClient("shares.json");
-
-            if (!await sharesBlob.ExistsAsync()) return Forbid();
-
-            var download = await sharesBlob.DownloadContentAsync();
-            var shares = System.Text.Json.JsonSerializer.Deserialize<List<ShareRecord>>(
-                download.Value.Content,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-
-            var share = shares.FirstOrDefault(s => s.Id == shareId);
-            if (share == null) return Forbid();
-
-            // Blob must be within the share's scope
-            var shareBlobPrefix = share.IsDirectory
-                ? share.BlobName.TrimEnd('/') + "/"
-                : share.BlobName;
-            if (!blobName.StartsWith(shareBlobPrefix, StringComparison.Ordinal) && blobName != share.BlobName)
-                return Forbid();
-
-            // Internal shares require auth + allowed-user check
-            if (share.Type == "Internal")
-            {
-                if (string.IsNullOrEmpty(jwtUserId)) return Unauthorized();
-                if (share.AllowedUserIds.Count > 0 && !share.AllowedUserIds.Contains(jwtUserId))
-                    return StatusCode(403, "You don't have permission to view this content.");
-            }
-
-            ownerUserId = share.OwnerId;
-        }
-        else if (!string.IsNullOrEmpty(jwtUserId))
-        {
-            // JWT-based access — user must own the blob (first path segment = userId)
-            var ownerId = blobName.Split('/')[0];
-            if (ownerId != jwtUserId) return Forbid();
-            ownerUserId = jwtUserId;
-        }
-        else
-        {
-            return Unauthorized();
-        }
+        var (authError, ownerUserId) = await AuthorizeBlobAccessAsync(blobName);
+        if (authError != null) return authError;
 
         // --- Get owner's encryption key ---
         var owner = await _userService.GetByIdAsync(ownerUserId!);
@@ -365,6 +318,236 @@ public class FilesController : ControllerBase
         Response.Headers.Append("Content-Disposition", $"{disposition}; filename*=UTF-8''{safeFileName}");
 
         return File(contentStream, contentType, enableRangeProcessing: false);
+    }
+
+    /// <summary>
+    /// Stream a (decrypted) file with HTTP Range support so &lt;video&gt;/&lt;audio&gt; elements can
+    /// play and seek large media on the fly without downloading the whole file.
+    /// Auth: JWT (owner — via Authorization header or ?access_token=) OR ?shareId= (share-based).
+    /// Encrypted files are decrypted per-range using AES-CBC block alignment.
+    /// </summary>
+    [HttpGet("stream/{*blobName}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> StreamFile(string blobName)
+    {
+        var container = GetContainer();
+        var blobClient = container.GetBlobClient(blobName);
+
+        if (!await blobClient.ExistsAsync())
+            return NotFound();
+
+        var (authError, ownerUserId) = await AuthorizeBlobAccessAsync(blobName);
+        if (authError != null) return authError;
+
+        var owner = await _userService.GetByIdAsync(ownerUserId!);
+        if (owner == null) return NotFound();
+
+        var props = await blobClient.GetPropertiesAsync();
+        var contentType = props.Value.ContentType ?? "application/octet-stream";
+        var encryptedLength = props.Value.ContentLength;
+
+        var isEncrypted = props.Value.Metadata.TryGetValue(EncryptionService.IvMetadataKey, out var ivHex)
+            && !string.IsNullOrEmpty(ivHex)
+            && !string.IsNullOrEmpty(owner.EncryptedKey);
+
+        byte[]? userKey = null;
+        byte[]? iv = null;
+        long plaintextLength;
+
+        if (isEncrypted)
+        {
+            userKey = _encryption.UnwrapKey(owner.EncryptedKey!);
+            iv = Convert.FromHexString(ivHex!);
+            plaintextLength = await GetPlaintextLengthAsync(blobClient, encryptedLength, userKey, iv);
+        }
+        else
+        {
+            plaintextLength = encryptedLength;
+        }
+
+        // --- Parse a single Range header (in plaintext coordinates) ---
+        long start = 0, end = plaintextLength - 1;
+        var isPartial = false;
+        var rangeHeader = Request.Headers.Range.FirstOrDefault();
+        if (!string.IsNullOrEmpty(rangeHeader) && rangeHeader.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+        {
+            var spec = rangeHeader["bytes=".Length..].Split(',')[0].Trim();
+            var dash = spec.IndexOf('-');
+            if (dash >= 0)
+            {
+                var startStr = spec[..dash];
+                var endStr = spec[(dash + 1)..];
+                if (string.IsNullOrEmpty(startStr))
+                {
+                    // Suffix range: last N bytes
+                    if (long.TryParse(endStr, out var suffix) && suffix > 0)
+                    {
+                        start = Math.Max(0, plaintextLength - suffix);
+                        isPartial = true;
+                    }
+                }
+                else if (long.TryParse(startStr, out var s))
+                {
+                    start = s;
+                    if (!string.IsNullOrEmpty(endStr) && long.TryParse(endStr, out var e))
+                        end = Math.Min(e, plaintextLength - 1);
+                    isPartial = true;
+                }
+            }
+
+            if (start > end || start >= plaintextLength || start < 0)
+            {
+                Response.Headers["Content-Range"] = $"bytes */{plaintextLength}";
+                return StatusCode(StatusCodes.Status416RangeNotSatisfiable);
+            }
+        }
+
+        var length = end - start + 1;
+
+        Stream bodyStream = isEncrypted
+            ? await CreateDecryptedRangeStreamAsync(blobClient, encryptedLength, userKey!, iv!, start, length)
+            : (await blobClient.DownloadStreamingAsync(new BlobDownloadOptions { Range = new HttpRange(start, length) })).Value.Content;
+
+        Response.Headers["Accept-Ranges"] = "bytes";
+        Response.Headers["Cache-Control"] = "private, max-age=3600";
+        Response.Headers["Content-Disposition"] = "inline";
+        Response.ContentType = contentType;
+        Response.ContentLength = length;
+        if (isPartial)
+        {
+            Response.Headers["Content-Range"] = $"bytes {start}-{end}/{plaintextLength}";
+            Response.StatusCode = StatusCodes.Status206PartialContent;
+        }
+
+        try
+        {
+            await bodyStream.CopyToAsync(Response.Body, 64 * 1024, HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException) { /* client seeked/closed — expected */ }
+        finally
+        {
+            await bodyStream.DisposeAsync();
+        }
+
+        return new EmptyResult();
+    }
+
+    // Shared authorization for download/stream: returns an error result, or the resolved owner id.
+    private async Task<(IActionResult? Error, string? OwnerUserId)> AuthorizeBlobAccessAsync(string blobName)
+    {
+        var shareId = Request.Query["shareId"].FirstOrDefault();
+        var jwtUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!string.IsNullOrEmpty(shareId))
+        {
+            var authContainer = _blobServiceClient.GetBlobContainerClient(
+                _configuration["Auth:UsersContainer"] ?? "exstore-auth");
+            var sharesBlob = authContainer.GetBlobClient("shares.json");
+
+            if (!await sharesBlob.ExistsAsync()) return (Forbid(), null);
+
+            var download = await sharesBlob.DownloadContentAsync();
+            var shares = System.Text.Json.JsonSerializer.Deserialize<List<ShareRecord>>(
+                download.Value.Content,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+            var share = shares.FirstOrDefault(s => s.Id == shareId);
+            if (share == null) return (Forbid(), null);
+
+            var shareBlobPrefix = share.IsDirectory
+                ? share.BlobName.TrimEnd('/') + "/"
+                : share.BlobName;
+            if (!blobName.StartsWith(shareBlobPrefix, StringComparison.Ordinal) && blobName != share.BlobName)
+                return (Forbid(), null);
+
+            if (share.Type == "Internal")
+            {
+                if (string.IsNullOrEmpty(jwtUserId)) return (Unauthorized(), null);
+                if (share.AllowedUserIds.Count > 0 && !share.AllowedUserIds.Contains(jwtUserId))
+                    return (StatusCode(403, "You don't have permission to view this content."), null);
+            }
+
+            return (null, share.OwnerId);
+        }
+
+        if (!string.IsNullOrEmpty(jwtUserId))
+        {
+            var ownerId = blobName.Split('/')[0];
+            if (ownerId != jwtUserId) return (Forbid(), null);
+            return (null, jwtUserId);
+        }
+
+        return (Unauthorized(), null);
+    }
+
+    // Determine plaintext length = ciphertext length minus the PKCS7 padding on the final block.
+    private async Task<long> GetPlaintextLengthAsync(BlobClient blobClient, long encryptedLength, byte[] userKey, byte[] iv)
+    {
+        const int block = EncryptionService.BlockSize;
+        if (encryptedLength < block) return encryptedLength;
+
+        // Read the last block plus (if present) the preceding block to serve as the CBC IV.
+        long readOffset = encryptedLength >= 2 * block ? encryptedLength - 2 * block : 0;
+        int readLen = (int)(encryptedLength - readOffset);
+        var buf = new byte[readLen];
+        var resp = await blobClient.DownloadStreamingAsync(new BlobDownloadOptions { Range = new HttpRange(readOffset, readLen) });
+        await ReadExactAsync(resp.Value.Content, buf, readLen);
+
+        var lastBlock = buf[(readLen - block)..];
+        var prevBlockOrIv = readLen >= 2 * block ? buf[..block] : iv;
+        var pad = _encryption.GetPkcs7PadLength(lastBlock, prevBlockOrIv, userKey);
+        return encryptedLength - pad;
+    }
+
+    // Build a stream that yields decrypted plaintext bytes [start, start+length) from an AES-CBC blob.
+    private async Task<Stream> CreateDecryptedRangeStreamAsync(
+        BlobClient blobClient, long encryptedLength, byte[] userKey, byte[] iv, long start, long length)
+    {
+        const int block = EncryptionService.BlockSize;
+        long firstBlock = start / block;
+        int intraOffset = (int)(start - firstBlock * block);
+        long end = start + length - 1;
+        long lastBlock = end / block;
+
+        // For CBC, decrypting block N needs cipher block N-1 as the IV (or the stored IV when N == 0).
+        long cipherReadStart = firstBlock == 0 ? 0 : (firstBlock - 1) * block;
+        long cipherReadEndExclusive = Math.Min((lastBlock + 1) * block, encryptedLength);
+        long cipherReadLen = cipherReadEndExclusive - cipherReadStart;
+
+        var resp = await blobClient.DownloadStreamingAsync(new BlobDownloadOptions
+        {
+            Range = new HttpRange(cipherReadStart, cipherReadLen)
+        });
+        Stream cipherStream = resp.Value.Content;
+
+        byte[] effectiveIv;
+        if (firstBlock == 0)
+        {
+            effectiveIv = iv;
+        }
+        else
+        {
+            // The first downloaded block is the preceding cipher block — use it as the IV.
+            var ivBuf = new byte[block];
+            await ReadExactAsync(cipherStream, ivBuf, block);
+            effectiveIv = ivBuf;
+        }
+
+        var decrypting = _encryption.CreateDecryptingReadStreamNoPadding(cipherStream, userKey, effectiveIv);
+        // Skip the offset inside the first block, then cap output to the requested length (this also
+        // naturally excludes any PKCS7 padding on the final block).
+        return new RangeLimitedStream(decrypting, intraOffset, length);
+    }
+
+    private static async Task ReadExactAsync(Stream s, byte[] buffer, int count)
+    {
+        int total = 0;
+        while (total < count)
+        {
+            int n = await s.ReadAsync(buffer.AsMemory(total, count - total));
+            if (n == 0) break;
+            total += n;
+        }
     }
 
     [HttpDelete("{*blobName}")]
@@ -545,4 +728,65 @@ public class FilesController : ControllerBase
 
 /// <summary>Request body for renaming a file or folder.</summary>
 public record RenameRequest(string BlobName, string NewName, bool IsDirectory);
+
+/// <summary>
+/// Read-only stream wrapper that first discards <c>skip</c> bytes from the inner stream, then
+/// yields at most <c>limit</c> bytes. Used to trim a block-aligned decrypted stream down to the
+/// exact requested byte range.
+/// </summary>
+internal sealed class RangeLimitedStream : Stream
+{
+    private readonly Stream _inner;
+    private long _skip;
+    private long _remaining;
+
+    public RangeLimitedStream(Stream inner, long skip, long limit)
+    {
+        _inner = inner;
+        _skip = skip;
+        _remaining = limit;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+    private async ValueTask SkipAsync(CancellationToken ct)
+    {
+        var scratch = new byte[Math.Min(_skip, 64 * 1024)];
+        while (_skip > 0)
+        {
+            int want = (int)Math.Min(_skip, scratch.Length);
+            int n = await _inner.ReadAsync(scratch.AsMemory(0, want), ct);
+            if (n == 0) { _skip = 0; break; }
+            _skip -= n;
+        }
+    }
+
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+    {
+        if (_skip > 0) await SkipAsync(ct);
+        if (_remaining <= 0) return 0;
+        int want = (int)Math.Min(count, _remaining);
+        int read = await _inner.ReadAsync(buffer.AsMemory(offset, want), ct);
+        _remaining -= read;
+        return read;
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+        => ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _inner.Dispose();
+        base.Dispose(disposing);
+    }
+}
 

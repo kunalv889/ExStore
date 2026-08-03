@@ -61,6 +61,13 @@ export const fileService = {
         api.post('/files/directory', null, { params: { name, ...(path ? { path } : {}) } }),
     renameItem: (blobName: string, newName: string, isDirectory: boolean) =>
         api.post('/files/rename', { blobName, newName, isDirectory }),
+    // Direct URL to the range-streaming endpoint for inline <video>/<audio> playback.
+    // Auth is passed via ?access_token= because media elements can't send Authorization headers.
+    streamUrl: (blobName: string, token?: string | null) => {
+        const encoded = blobName.split('/').map(encodeURIComponent).join('/')
+        const qs = token ? `?access_token=${encodeURIComponent(token)}` : ''
+        return `${API_BASE_URL}/api/files/stream/${encoded}${qs}`
+    },
 }
 
 export const adminService = {

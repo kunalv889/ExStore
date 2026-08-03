@@ -89,6 +89,7 @@ export default function Home() {
     const [error, setError] = useState<string | null>(null)
 
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+    const [videoItem, setVideoItem] = useState<FileItem | null>(null)
 
     const [selectMode, setSelectMode] = useState(false)
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -158,6 +159,7 @@ export default function Home() {
             return
         }
         if (isImage(file.contentType, file.fileName)) setLightboxIndex(imgIdx)
+        else if (isVideo(file.contentType, file.fileName)) setVideoItem(file)
     }
 
     const toggleSelect = (name: string) =>
@@ -697,6 +699,25 @@ export default function Home() {
                     <div className="absolute bottom-4 text-center w-full text-white text-sm opacity-70 pointer-events-none">
                         {displayName(currentLightboxImage.fileName)} · {formatBytes(currentLightboxImage.size)}
                         <span className="ml-3 text-xs opacity-60">{lightboxIndex! + 1} / {imageItems.length}</span>
+                    </div>
+                </div>
+            )}
+            {/* Video Player Modal — streams (with range/seek) from the backend so large files play instantly */}
+            {videoItem && (
+                <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+                    onClick={() => setVideoItem(null)}>
+                    <button onClick={() => setVideoItem(null)}
+                        className="absolute top-4 right-4 text-white text-4xl leading-none hover:text-gray-300 z-10">×</button>
+                    <div onClick={e => e.stopPropagation()} className="w-full max-w-5xl">
+                        <video
+                            src={fileService.streamUrl(videoItem.fileName, token)}
+                            controls
+                            autoPlay
+                            className="w-full max-h-[85vh] rounded shadow-2xl bg-black"
+                        />
+                        <div className="text-center mt-3 text-white text-sm opacity-70">
+                            {displayName(videoItem.fileName)} · {formatBytes(videoItem.size)}
+                        </div>
                     </div>
                 </div>
             )}

@@ -127,4 +127,48 @@ public class EncryptionService
         var decryptor = aes.CreateDecryptor();
         return new CryptoStream(encryptedSource, decryptor, CryptoStreamMode.Read, leaveOpen: false);
     }
+
+    /// <summary>AES-CBC block size in bytes.</summary>
+    public const int BlockSize = 16;
+
+    /// <summary>
+    /// Create a CBC decrypting stream with NO padding removal. Used for random-access range
+    /// decryption where the requested byte range is trimmed by the caller, so PKCS7 padding on
+    /// the final block must not be auto-stripped (and interior blocks have no padding).
+    /// <paramref name="iv"/> is the stored IV (block 0) or the cipher block immediately preceding
+    /// the first block being decrypted.
+    /// </summary>
+    public Stream CreateDecryptingReadStreamNoPadding(Stream encryptedSource, byte[] userKey, byte[] iv)
+    {
+        if (userKey.Length != 32) throw new ArgumentException("Key must be 32 bytes", nameof(userKey));
+        if (iv.Length != BlockSize) throw new ArgumentException("IV must be 16 bytes", nameof(iv));
+
+        using var aes = Aes.Create();
+        aes.Key = userKey;
+        aes.IV = iv;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.None;
+
+        var decryptor = aes.CreateDecryptor();
+        return new CryptoStream(encryptedSource, decryptor, CryptoStreamMode.Read, leaveOpen: false);
+    }
+
+    /// <summary>
+    /// Decrypt the final cipher block to read its PKCS7 padding length (1..16).
+    /// <paramref name="prevBlockOrIv"/> is the preceding cipher block, or the stored IV when the
+    /// file is a single block. Returns 0 if the padding value is invalid.
+    /// </summary>
+    public int GetPkcs7PadLength(byte[] lastCipherBlock, byte[] prevBlockOrIv, byte[] userKey)
+    {
+        using var aes = Aes.Create();
+        aes.Key = userKey;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.None;
+        aes.IV = prevBlockOrIv;
+
+        using var decryptor = aes.CreateDecryptor();
+        var plain = decryptor.TransformFinalBlock(lastCipherBlock, 0, BlockSize);
+        int pad = plain[BlockSize - 1];
+        return pad is >= 1 and <= BlockSize ? pad : 0;
+    }
 }

@@ -56,7 +56,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length", "Content-Disposition");
     });
 });
 
@@ -94,6 +95,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "ExStore",
             ValidAudience = builder.Configuration["Jwt:Audience"] ?? "ExStore",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+        };
+
+        // <video>/<audio> elements can't send an Authorization header, so allow the token to be
+        // supplied via ?access_token= on the media streaming endpoint (owner playback).
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    path.StartsWithSegments("/api/files/stream", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 

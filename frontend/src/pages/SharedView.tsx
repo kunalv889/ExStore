@@ -47,6 +47,18 @@ function displayName(fileName: string) {
     return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
 }
 
+// Turn a share's /download/ blobUri into a /stream/ URL for inline <video> playback.
+// Public shares authorize via the ?shareId= already in the URL; internal shares also need the
+// access_token in the query (media elements can't send Authorization headers).
+function streamUrlFromBlobUri(blobUri: string, token: string | null, isPublic: boolean) {
+    let url = blobUri.replace('/api/files/download/', '/api/files/stream/')
+    if (!isPublic && token) {
+        const sep = url.includes('?') ? '&' : '?'
+        url = `${url}${sep}access_token=${encodeURIComponent(token)}`
+    }
+    return url
+}
+
 async function triggerDownload(url: string, name: string, token: string | null, isPublic: boolean) {
     // Public shares are self-authorizing via the ?shareId= in the URL, so we can stream the
     // download straight to disk (no auth header, no buffering the whole file into memory —
@@ -255,22 +267,12 @@ export default function SharedView() {
                             </div>
                         )}
                         {isVideo(singleFile.contentType, singleFile.fileName) && (
-                            <div className="flex items-center justify-center bg-slate-900 py-16">
-                                <div className="text-center">
-                                    <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-violet-600/20 flex items-center justify-center">
-                                        <svg className="w-10 h-10 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-                                        </svg>
-                                    </div>
-                                    <p className="text-white/70 text-sm mb-4">Encrypted video — download to play</p>
-                                    <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token, shareInfo?.type === 'Public')}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl transition mx-auto">
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                        </svg>
-                                        Download Video
-                                    </button>
-                                </div>
+                            <div className="flex items-center justify-center bg-slate-900">
+                                <video
+                                    src={streamUrlFromBlobUri(singleFile.blobUri, token, shareInfo?.type === 'Public')}
+                                    controls
+                                    className="max-h-[70vh] max-w-full bg-black"
+                                />
                             </div>
                         )}
                         <div className="px-5 py-4 flex items-center justify-between gap-4">
