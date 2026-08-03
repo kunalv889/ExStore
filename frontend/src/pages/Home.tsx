@@ -158,7 +158,6 @@ export default function Home() {
             return
         }
         if (isImage(file.contentType, file.fileName)) setLightboxIndex(imgIdx)
-        else triggerDownload(file, token)
     }
 
     const toggleSelect = (name: string) =>
@@ -639,6 +638,16 @@ export default function Home() {
                                                 {!file.isDirectory && <p className="text-xs text-slate-400 mt-0.5">{formatBytes(file.size)}</p>}
                                             </div>
                                             <div className="flex items-center gap-0.5 shrink-0 -mr-0.5">
+                                            {!file.isDirectory && (
+                                                <button
+                                                    onClick={e => { e.stopPropagation(); triggerDownload(file, token) }}
+                                                    className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 transition mt-0.5"
+                                                    title="Download">
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                                    </svg>
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={e => { e.stopPropagation(); openRename(file, name) }}
                                                 className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-amber-500 hover:bg-amber-50 transition mt-0.5"
