@@ -39,7 +39,9 @@ function formatBytes(bytes: number) {
 
 function displayName(fileName: string) {
     const afterSlash = fileName.includes('/') ? fileName.split('/').slice(1).join('/') : fileName
-    return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
+    // Strip the GUID prefix from the file segment, whether the file is at the root or nested
+    // inside folders (e.g. "folder/{guid}_name.jpg" -> "folder/name.jpg").
+    return afterSlash.replace(/(^|\/)[0-9a-f-]{36}_/i, '$1')
 }
 
 function lastName(path: string) {

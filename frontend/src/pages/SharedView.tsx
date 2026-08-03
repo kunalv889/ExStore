@@ -44,7 +44,7 @@ function lastName(path: string) {
 
 function displayName(fileName: string) {
     const afterSlash = fileName.includes('/') ? fileName.split('/').slice(1).join('/') : fileName
-    return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
+    return afterSlash.replace(/(^|\/)[0-9a-f-]{36}_/i, '$1')
 }
 
 // Turn a share's /download/ blobUri into a /stream/ URL for inline <video> playback.
