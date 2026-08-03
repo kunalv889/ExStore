@@ -86,13 +86,13 @@ export default function Upload() {
                 >
                     <div className="text-3xl mb-2">📁</div>
                     <p className="text-sm font-medium text-blue-600">Click to choose files</p>
-                    <p className="text-xs text-gray-400 mt-1">Images, Videos, ZIP & RAR archives · Multiple files supported</p>
+                    <p className="text-xs text-gray-400 mt-1">Images, Videos, PDFs, Docs, Text, ZIP & RAR archives · Multiple files supported</p>
                     <input
                         ref={inputRef}
                         type="file"
                         multiple
                         onChange={handleFileChange}
-                        accept="image/*,video/*,.zip,.rar,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/vnd.rar"
+                        accept="image/*,video/*,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain,.zip,.rar,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/vnd.rar"
                         className="hidden"
                     />
                 </div>
