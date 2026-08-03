@@ -1,6 +1,7 @@
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
 using ExStore.API.Models;
 using ExStore.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -393,6 +394,121 @@ public class FilesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Rename a file or folder. Azure Blob Storage has no native rename, so this copies the
+    /// blob(s) to the new name (preserving encrypted content, IV metadata and content type)
+    /// and deletes the originals.
+    /// </summary>
+    [HttpPost("rename")]
+    public async Task<IActionResult> Rename([FromBody] RenameRequest request)
+    {
+        var userId = CurrentUserId;
+
+        if (request is null || string.IsNullOrWhiteSpace(request.BlobName) || string.IsNullOrWhiteSpace(request.NewName))
+            return BadRequest("Missing parameters.");
+
+        // Security: users can only rename their own blobs
+        if (!request.BlobName.StartsWith($"{userId}/", StringComparison.Ordinal))
+            return Forbid();
+
+        // New name must be a single, safe path segment
+        var newName = request.NewName.Trim();
+        if (newName.Contains('/') || newName.Contains('\\') || newName is "." or "..")
+            return BadRequest("Invalid name.");
+
+        var container = GetContainer();
+
+        try
+        {
+            if (request.IsDirectory)
+            {
+                var oldPrefix = request.BlobName.EndsWith('/') ? request.BlobName : request.BlobName + "/";
+                var trimmed = oldPrefix.TrimEnd('/');
+                var lastSlash = trimmed.LastIndexOf('/');
+                if (lastSlash < 0) return BadRequest("Invalid folder.");
+
+                var parent = trimmed[..lastSlash];
+                var newPrefix = $"{parent}/{newName}/";
+
+                if (string.Equals(oldPrefix, newPrefix, StringComparison.Ordinal))
+                    return NoContent();
+
+                // Reject if a folder with the target name already exists
+                await foreach (var _ in container.GetBlobsAsync(prefix: newPrefix))
+                    return Conflict(new { message = "A folder with that name already exists." });
+
+                var toMove = new List<string>();
+                await foreach (var blob in container.GetBlobsAsync(prefix: oldPrefix))
+                    toMove.Add(blob.Name);
+                if (toMove.Count == 0) return NotFound();
+
+                foreach (var name in toMove)
+                {
+                    var newBlobName = newPrefix + name[oldPrefix.Length..];
+                    await CopyBlobAsync(container, name, newBlobName);
+                    await container.GetBlobClient(name).DeleteIfExistsAsync();
+                }
+                return Ok(new { path = newPrefix.TrimEnd('/') });
+            }
+            else
+            {
+                var lastSlash = request.BlobName.LastIndexOf('/');
+                var dir = request.BlobName[..lastSlash];
+                var fileSeg = request.BlobName[(lastSlash + 1)..];
+
+                // Preserve the existing GUID prefix so display names strip correctly
+                var guidMatch = System.Text.RegularExpressions.Regex.Match(fileSeg, "^[0-9a-fA-F-]{36}_");
+                var guidPrefix = guidMatch.Success ? guidMatch.Value : $"{Guid.NewGuid()}_";
+                var newBlobName = $"{dir}/{guidPrefix}{newName}";
+
+                if (string.Equals(newBlobName, request.BlobName, StringComparison.Ordinal))
+                    return NoContent();
+
+                var src = container.GetBlobClient(request.BlobName);
+                if (!await src.ExistsAsync()) return NotFound();
+
+                await CopyBlobAsync(container, request.BlobName, newBlobName);
+                await src.DeleteIfExistsAsync();
+                return Ok(new { fileName = newBlobName });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error renaming {BlobName}", request.BlobName);
+            return StatusCode(500, "Error renaming item");
+        }
+    }
+
+    // Copy a blob within the same container using a server-side copy (Azure moves the bytes
+    // internally — data never streams through this API). Content, content type and metadata (IV)
+    // are preserved automatically. For same-account copies this completes near-instantly
+    // regardless of file size.
+    private async Task CopyBlobAsync(BlobContainerClient container, string source, string destination)
+    {
+        var srcClient = container.GetBlobClient(source);
+        var destClient = container.GetBlobClient(destination);
+
+        // Server-side copy needs to read the (private) source, so hand it a short-lived read SAS.
+        Uri copySource;
+        if (srcClient.CanGenerateSasUri)
+        {
+            var sasBuilder = new BlobSasBuilder(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddHours(1))
+            {
+                BlobContainerName = container.Name,
+                BlobName = source,
+                Resource = "b"
+            };
+            copySource = srcClient.GenerateSasUri(sasBuilder);
+        }
+        else
+        {
+            copySource = srcClient.Uri;
+        }
+
+        var operation = await destClient.StartCopyFromUriAsync(copySource);
+        await operation.WaitForCompletionAsync();
+    }
+
     /// <summary>Create an empty directory (uploads a hidden .keep placeholder).</summary>
     [HttpPost("directory")]
     public async Task<IActionResult> CreateDirectory([FromQuery] string name, [FromQuery] string? path = null)
@@ -422,4 +538,7 @@ public class FilesController : ControllerBase
         return string.Join('/', safe);
     }
 }
+
+/// <summary>Request body for renaming a file or folder.</summary>
+public record RenameRequest(string BlobName, string NewName, bool IsDirectory);
 
