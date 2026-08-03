@@ -47,7 +47,21 @@ function displayName(fileName: string) {
     return afterSlash.replace(/^[0-9a-f-]{36}_/i, '')
 }
 
-async function triggerDownload(url: string, name: string, token: string | null) {
+async function triggerDownload(url: string, name: string, token: string | null, isPublic: boolean) {
+    // Public shares are self-authorizing via the ?shareId= in the URL, so we can stream the
+    // download straight to disk (no auth header, no buffering the whole file into memory —
+    // important for large videos). ?download=1 forces an attachment response.
+    if (isPublic) {
+        const sep = url.includes('?') ? '&' : '?'
+        const a = document.createElement('a')
+        a.href = `${url}${sep}download=1`
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        return
+    }
+    // Internal shares require the auth header, so fetch with the token then save the blob.
     try {
         const headers: Record<string, string> = {}
         if (token) headers['Authorization'] = `Bearer ${token}`
@@ -249,7 +263,7 @@ export default function SharedView() {
                                         </svg>
                                     </div>
                                     <p className="text-white/70 text-sm mb-4">Encrypted video — download to play</p>
-                                    <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token)}
+                                    <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token, shareInfo?.type === 'Public')}
                                         className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl transition mx-auto">
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -266,7 +280,7 @@ export default function SharedView() {
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">{formatBytes(singleFile.size)}</p>
                             </div>
-                            <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token)}
+                            <button onClick={() => triggerDownload(singleFile.blobUri, lastName(displayName(singleFile.fileName)), token, shareInfo?.type === 'Public')}
                                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:from-indigo-600 hover:to-violet-700 transition shadow-sm">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -290,7 +304,7 @@ export default function SharedView() {
 
                                 return (
                                     <div key={i}
-                                        onClick={() => imgIdx >= 0 ? setLightboxIdx(imgIdx) : triggerDownload(file.blobUri, name, token)}                                        className="group bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
+                                        onClick={() => imgIdx >= 0 ? setLightboxIdx(imgIdx) : triggerDownload(file.blobUri, name, token, shareInfo?.type === 'Public')}                                        className="group bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
                                         <div className="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
                                             {file.isDirectory ? (
                                                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
@@ -359,7 +373,7 @@ export default function SharedView() {
                             className="absolute right-4 text-white text-5xl hover:text-gray-300 z-10 select-none px-2">›</button>
                     )}
                     <button
-                        onClick={e => { e.stopPropagation(); triggerDownload(currentLightbox.blobUri, lastName(displayName(currentLightbox.fileName)), token) }}
+                        onClick={e => { e.stopPropagation(); triggerDownload(currentLightbox.blobUri, lastName(displayName(currentLightbox.fileName)), token, shareInfo?.type === 'Public') }}
                         className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl transition z-10">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />

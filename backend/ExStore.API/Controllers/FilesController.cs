@@ -358,7 +358,11 @@ public class FilesController : ControllerBase
         }
 
         Response.Headers.Append("Cache-Control", "private, max-age=3600");
-        Response.Headers.Append("Content-Disposition", $"inline; filename*=UTF-8''{safeFileName}");
+        // When ?download=1 is passed, force the browser to save the file (attachment) rather than
+        // render it inline. Lets clients trigger a direct streamed download without buffering.
+        var forceDownload = Request.Query["download"].FirstOrDefault() is "1" or "true";
+        var disposition = forceDownload ? "attachment" : "inline";
+        Response.Headers.Append("Content-Disposition", $"{disposition}; filename*=UTF-8''{safeFileName}");
 
         return File(contentStream, contentType, enableRangeProcessing: false);
     }
