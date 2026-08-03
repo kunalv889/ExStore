@@ -59,6 +59,8 @@ export const fileService = {
     },
     createDirectory: (name: string, path?: string) =>
         api.post('/files/directory', null, { params: { name, ...(path ? { path } : {}) } }),
+    renameItem: (blobName: string, newName: string, isDirectory: boolean) =>
+        api.post('/files/rename', { blobName, newName, isDirectory }),
 }
 
 export const adminService = {
